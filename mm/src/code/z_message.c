@@ -177,14 +177,27 @@ s16 sOcarinaButtonFlashTimer = 12;
 s16 sOcarinaButtonFlashColorIndex = 1;
 s16 D_801C6A94 = 0;
 
+// #region SO2H [Menu] fix: widened from 6 to 8 rows (PAUSE_PAGE_MAX=7 real rows + 1 overflow
+// row for the "pauseCtx->pageIndex + 1" call sites in z_kaleido_scope_NES.c). Original vanilla
+// table was sized for the old 5-value enum (ITEM,MAP,QUEST,MASK,WORLD_MAP; max index used =
+// WORLD_MAP+1 = 5, hence 6 rows). Patch 0001/0002 widened PauseMenuPage to 7 values without
+// widening this table, so pageIndex/pageIndex+1 could read past row 5 -> out-of-bounds read
+// (same bug class as the D_8082B998/D_8082B9A8 texture tables above; audited together as part
+// of the pause-menu crash fix). Rows for pre-existing pages (ITEM/MAP/QUEST/MASK) keep their
+// original pattern at their new enum slots; new pages (ITEM_OOT, EQUIP_OOT) and the hidden
+// WORLD_MAP page reuse the ITEM pattern (matches how vanilla padded its own WORLD_MAP/overflow
+// rows below), and the new overflow row (index 7) repeats the same defensive pattern.
 u8 gPageSwitchNextButtonStatus[][5] = {
-    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },
-    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },
-    { BTN_ENABLED, BTN_DISABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },
-    { BTN_ENABLED, BTN_DISABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },
-    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },
-    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },
+    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },  // PAUSE_ITEM
+    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },  // PAUSE_ITEM_OOT
+    { BTN_ENABLED, BTN_DISABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED }, // PAUSE_MAP
+    { BTN_ENABLED, BTN_DISABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED }, // PAUSE_QUEST
+    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },  // PAUSE_MASK
+    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },  // PAUSE_EQUIP_OOT
+    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },  // PAUSE_WORLD_MAP (defensive)
+    { BTN_ENABLED, BTN_ENABLED, BTN_DISABLED, BTN_ENABLED, BTN_ENABLED },  // overflow (pageIndex+1 == PAGE_MAX)
 };
+// #endregion
 
 #define DEFINE_PERSON(_enum, _photo, _description, _metEnum, metMessage, _metFlag) metMessage,
 #define DEFINE_EVENT(_enum, _icon, _colorFlag, _description, completedMessage, _completedFlag) completedMessage,

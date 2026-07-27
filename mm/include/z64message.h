@@ -354,7 +354,7 @@ void Message_FindCreditsMessage(struct PlayState* play, u16 textId);
 void Message_DrawTextCredits(struct PlayState* play, Gfx** gfxP);
 void Message_DecodeCredits(struct PlayState* play);
 
-extern u8 gPageSwitchNextButtonStatus[6][5];
+extern u8 gPageSwitchNextButtonStatus[8][5]; // #region SO2H [Menu] fix: widened from [6][5], see z_message.c
 extern u16 gBombersNotebookWeekEventFlags[BOMBERS_NOTEBOOK_EVENT_MAX];
 extern s16 gOcarinaSongItemMap[];
 

@@ -1224,18 +1224,40 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
     FrameInterpolation_RecordCloseChild();
 }
 
-TexturePtr D_8082B998[] = {
-    gPauseToMasksENGTex,
-    gPauseToSelectItemENGTex,
-    gPauseToMapENGTex,
-    gPauseToQuestStatusENGTex,
+// #region SO2H [Menu] fix: arrays widened from 4 to PAUSE_PAGE_MAX (7) entries to match the
+// so2h 6-page hexagon prism enum (z64pause_menu.h). Indexed directly by pauseCtx->pageIndex
+// (see KaleidoScope_DrawInfoPanel below) so entry count MUST equal PAUSE_PAGE_MAX or this is
+// an out-of-bounds TexturePtr read -> garbage pointer into Gfx_DrawTexQuad4b/ImportTextureIA4
+// -> access violation. This was the root cause of the win64 pause-menu crash reported after
+// patch 0001/0002 widened the enum without updating these two tables.
+// L/R page-swipe cycle only visits ITEM<->ITEM_OOT<->MAP<->QUEST<->MASK<->EQUIP_OOT (6 pages,
+// wrapping); PAUSE_WORLD_MAP is a hidden owl-warp-only target never reached via cursor swipe,
+// so its slot (and the reused placeholder banners below) are defensive-only and should not
+// normally render. gPauseToSelectItemENGTex is reused as a placeholder "go to Equipment"/
+// "go to OOT Item" banner because no dedicated 128px-wide banner asset exists yet for the new
+// OOT Item/Equipment pages (gPauseToEquipENGTex exists but is only 64px wide - reusing it at
+// the hardcoded 128px draw width below would itself be an out-of-bounds texture read). Follow-up:
+// commission real "go to OOT Item"/"go to Equipment" 128x16 IA4 banner art to replace the
+// placeholders (tracked in patch 0004 notes).
+TexturePtr D_8082B998[PAUSE_PAGE_MAX] = {
+    /* PAUSE_ITEM      */ gPauseToSelectItemENGTex,     // placeholder: dest EQUIP_OOT (no banner yet)
+    /* PAUSE_ITEM_OOT  */ gPauseToSelectItemENGTex,     // dest ITEM
+    /* PAUSE_MAP       */ gPauseToSelectItemENGTex,     // placeholder: dest ITEM_OOT (no banner yet)
+    /* PAUSE_QUEST     */ gPauseToMapENGTex,            // dest MAP
+    /* PAUSE_MASK      */ gPauseToQuestStatusENGTex,    // dest QUEST
+    /* PAUSE_EQUIP_OOT */ gPauseToMasksENGTex,          // dest MASK
+    /* PAUSE_WORLD_MAP */ gPauseToMapENGTex,            // defensive, unreachable via swipe
 };
-TexturePtr D_8082B9A8[] = {
-    gPauseToMapENGTex,
-    gPauseToQuestStatusENGTex,
-    gPauseToMasksENGTex,
-    gPauseToSelectItemENGTex,
+TexturePtr D_8082B9A8[PAUSE_PAGE_MAX] = {
+    /* PAUSE_ITEM      */ gPauseToSelectItemENGTex,     // placeholder: dest ITEM_OOT (no banner yet)
+    /* PAUSE_ITEM_OOT  */ gPauseToMapENGTex,            // dest MAP
+    /* PAUSE_MAP       */ gPauseToQuestStatusENGTex,    // dest QUEST
+    /* PAUSE_QUEST     */ gPauseToMasksENGTex,          // dest MASK
+    /* PAUSE_MASK      */ gPauseToSelectItemENGTex,     // placeholder: dest EQUIP_OOT (no banner yet)
+    /* PAUSE_EQUIP_OOT */ gPauseToSelectItemENGTex,     // dest ITEM
+    /* PAUSE_WORLD_MAP */ gPauseToMapENGTex,            // defensive, unreachable via swipe
 };
+// #endregion
 void KaleidoScope_DrawInfoPanel(PlayState* play) {
     static s16 sPauseZRCursorColorTargets[][4] = {
         { 180, 210, 255, 220 },
