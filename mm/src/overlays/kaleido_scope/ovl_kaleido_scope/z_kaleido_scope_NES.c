@@ -807,10 +807,15 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
         // SO2H NEW: OOT Item page background predraw (hexagon face index 1, -60deg).
         // Guarded on itemOotPageVtx being allocated - real content/allocation lands in
-        // patch 0004; until then the page exists in the cycle but draws nothing rather
-        // than crashing on a null Vtx buffer.
-        if ((pauseCtx->pageIndex != PAUSE_ITEM_OOT) && (pauseCtx->pageIndex != PAUSE_MASK) &&
-            (pauseCtx->itemOotPageVtx != NULL)) {
+        // patch 0004. SO2H PLACEHOLDER (user request: show a blank MM screen on the
+        // unrendered OOT faces instead of nothing, so all 6 hex faces are visible for
+        // review): when itemOotPageVtx isn't allocated yet, fall back to drawing the
+        // always-allocated vanilla maskPageVtx/sMaskPageBgTextures at this face's own
+        // hex slot/rotation - just an empty MM-style page background, no item content
+        // (KaleidoScope_DrawItemSelectOot is skipped since it needs the real OOT vtx
+        // buffer this face doesn't have yet). Remove this fallback once patch 0004
+        // lands and itemOotPageVtx is always allocated.
+        if ((pauseCtx->pageIndex != PAUSE_ITEM_OOT) && (pauseCtx->pageIndex != PAUSE_MASK)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
             gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0, PRIMITIVE, 0,
@@ -825,12 +830,17 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-            POLY_OPA_DISP =
-                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx, sItemPageBgTextures);
+            if (pauseCtx->itemOotPageVtx != NULL) {
+                POLY_OPA_DISP =
+                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx, sItemPageBgTextures);
 
-            GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
-            KaleidoScope_DrawItemSelectOot(play);
-            GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
+                GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
+                KaleidoScope_DrawItemSelectOot(play);
+                GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
+            } else {
+                POLY_OPA_DISP =
+                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
+            }
         }
 
         if ((pauseCtx->pageIndex != PAUSE_MAP) && (pauseCtx->pageIndex != PAUSE_EQUIP_OOT)) {
@@ -912,10 +922,12 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
         // SO2H NEW: OOT Equip page background predraw (hexagon face index 5, -300deg).
         // Guarded on equipOotPageVtx being allocated - real content/allocation lands in
-        // patch 0005 (Link doll framebuffer); until then draws nothing rather than
-        // crashing on a null Vtx buffer.
-        if ((pauseCtx->pageIndex != PAUSE_EQUIP_OOT) && (pauseCtx->pageIndex != PAUSE_MAP) &&
-            (pauseCtx->equipOotPageVtx != NULL)) {
+        // patch 0005 (Link doll framebuffer). SO2H PLACEHOLDER (same as the ITEM_OOT
+        // predraw above): fall back to the always-allocated maskPageVtx/
+        // sMaskPageBgTextures blank MM background at this face's slot when
+        // equipOotPageVtx isn't ready yet, so the face isn't empty. Remove once patch
+        // 0005 lands.
+        if ((pauseCtx->pageIndex != PAUSE_EQUIP_OOT) && (pauseCtx->pageIndex != PAUSE_MAP)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
             gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
@@ -932,12 +944,17 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-            POLY_OPA_DISP =
-                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx, sMaskPageBgTextures);
+            if (pauseCtx->equipOotPageVtx != NULL) {
+                POLY_OPA_DISP =
+                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx, sMaskPageBgTextures);
 
-            GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
-            KaleidoScope_DrawEquipmentOot(play);
-            GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
+                GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
+                KaleidoScope_DrawEquipmentOot(play);
+                GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
+            } else {
+                POLY_OPA_DISP =
+                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
+            }
         }
 
         // #endregion
@@ -970,8 +987,12 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             // SO2H NEW: OOT Item page (hexagon face index 1)
             case PAUSE_ITEM_OOT:
-                // Guarded on itemOotPageVtx being allocated (see patch 0004, not yet done)
-                if (pauseCtx->itemOotPageVtx != NULL) {
+                // Guarded on itemOotPageVtx being allocated (see patch 0004, not yet
+                // done). SO2H PLACEHOLDER: still draw the blank MM background/frame at
+                // this face's slot when focused, even without real content, so the page
+                // isn't a void when cycled to directly (see predraw block above for the
+                // matching non-focused fallback).
+                {
                     gDPPipeSync(POLY_OPA_DISP++);
 
                     gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0,
@@ -986,12 +1007,17 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-                    POLY_OPA_DISP =
-                        KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx, sItemPageBgTextures);
+                    if (pauseCtx->itemOotPageVtx != NULL) {
+                        POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx,
+                                                                       sItemPageBgTextures);
 
-                    GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
-                    KaleidoScope_DrawItemSelectOot(play);
-                    GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                        GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                        KaleidoScope_DrawItemSelectOot(play);
+                        GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                    } else {
+                        POLY_OPA_DISP =
+                            KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
+                    }
                 }
                 break;
 
@@ -1034,7 +1060,21 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                     MapDisp_DrawDungeonMap(play);
                 } else {
-                    Matrix_RotateYF(R_PAUSE_WORLD_MAP_YAW / 1000.0f, MTXMODE_NEW);
+                    // SO2H FIX (user-reported: map frame now centers, but the map image
+                    // inside it is still uncentered/left-shifted): root cause found - this
+                    // draw call used to share the same fresh Matrix_RotateYF(..., NEW) as
+                    // the frame above, both at the vanilla cube's -1.57f (-90deg). The
+                    // frame rotation was corrected to -2.0944f (-120deg, this page's real
+                    // hex slot, see fix above), but this inner map-art matrix still pulled
+                    // R_PAUSE_WORLD_MAP_YAW, a vanilla debug register hardcoded to -0x622
+                    // (-1.57f) in z_kaleido_setup.c. That register is also reused verbatim
+                    // by KaleidoScope_DrawOwlWarpMapPage (still on the old 4-face cube's
+                    // geometry, out of scope, left untouched) - so it can't be repointed at
+                    // -2.0944f globally without re-breaking that screen. Overriding the
+                    // yaw locally here only, to match this page's actual hex slot, fixes
+                    // the frame/art mismatch without touching the shared register or the
+                    // Owl Warp screen.
+                    Matrix_RotateYF(-2.0944f, MTXMODE_NEW);
 
                     if ((pauseCtx->state == PAUSE_STATE_OPENING_3) || (pauseCtx->state == PAUSE_STATE_OWL_WARP_3) ||
                         (pauseCtx->state >= PAUSE_STATE_OWL_WARP_6) ||
@@ -1108,8 +1148,11 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             // SO2H NEW: OOT Equip page (hexagon face index 5)
             case PAUSE_EQUIP_OOT:
-                // Guarded on equipOotPageVtx being allocated (see patch 0005, not yet done)
-                if (pauseCtx->equipOotPageVtx != NULL) {
+                // Guarded on equipOotPageVtx being allocated (see patch 0005, not yet
+                // done). SO2H PLACEHOLDER: same reasoning as PAUSE_ITEM_OOT above - draw
+                // the blank MM background/frame at this face's slot when focused so it
+                // isn't a void, until patch 0005 lands.
+                {
                     gDPPipeSync(POLY_OPA_DISP++);
 
                     gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0,
@@ -1124,12 +1167,17 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-                    POLY_OPA_DISP =
-                        KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx, sMaskPageBgTextures);
+                    if (pauseCtx->equipOotPageVtx != NULL) {
+                        POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx,
+                                                                       sMaskPageBgTextures);
 
-                    GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
-                    KaleidoScope_DrawEquipmentOot(play);
-                    GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                        GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                        KaleidoScope_DrawEquipmentOot(play);
+                        GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                    } else {
+                        POLY_OPA_DISP =
+                            KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
+                    }
                 }
                 break;
         }
