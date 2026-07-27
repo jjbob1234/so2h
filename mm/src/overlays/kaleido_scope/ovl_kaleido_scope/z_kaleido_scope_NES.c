@@ -757,25 +757,32 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
         // and never visible). Opposite pairs: ITEM<->QUEST, ITEM_OOT<->MASK, MAP<->EQUIP_OOT.
         // Rotation angles are -60deg * enum index (tools/gen_pause_geometry.py order).
         //
-        // SO2H FIX (user-reported: neighboring pages visually overlap/clip into the
+        // SO2H FIX v2 (user-reported: neighboring pages visually overlap/clip into the
         // current page even when fully stopped, not just mid-rotation): the original
-        // 4-face cube used 90deg between adjacent faces; this predraw block and the
-        // "case" switch below it both placed every face's flat panel at the SAME shared
-        // depth/scale (-93.0f / 0.78f). At 90deg spacing that left enough angular gap
-        // between neighbors to only show a thin sliver at the screen edges. At 60deg
-        // spacing (hexagon) the immediate neighbors sit much closer together, so their
-        // panels (still sized/placed for 90deg gaps) visibly bleed into the current
-        // page's center. Scaling *everything* uniformly doesn't fix this (it's scale
-        // invariant under a fixed-FOV perspective camera) - what actually changes the
-        // ratio is decoupling neighbor-panel placement from the current page's own
-        // panel: push only the non-current (predraw) panels further back and shrink
-        // them, leaving the current page's own "case" block below completely
-        // untouched so its size/position never changes while it's focused.
-        // ~1.4x further back + ~0.7x smaller local scale, tuned to visually clear the
-        // hexagon's tighter 60deg gap; adjust these two constants together if the
-        // neighbor peek still overlaps or shrinks too much after a build test.
-#define SO2H_PREDRAW_DEPTH (-130.0f)
-#define SO2H_PREDRAW_SCALE (0.55f)
+        // 4-face cube used 90deg between adjacent faces; every face's flat panel
+        // (predraw AND the current page's own "case" block below, AND the save-prompt
+        // roll block further down) shared the SAME depth/scale (-93.0f / 0.78f). At
+        // 90deg spacing that left enough angular gap between neighbors to only show a
+        // thin sliver at the screen edges. At 60deg spacing (hexagon) that gap roughly
+        // halves, so the same-size panels at the same radius bleed into each other.
+        // First attempt (reverted) shrank only the non-current predraw panels - that
+        // fixed the overlap but made neighbors look mismatched/tiny next to the
+        // current page. Correct fix: keep ONE shared depth/scale for every face (panel
+        // size relative to its own slot never changes) and instead enlarge the radius
+        // of the hexagon those slots sit on, i.e. push every face - current and
+        // neighbors alike - further back so the 60deg gap has the same physical
+        // clearance the 90deg gap used to have.
+        // To preserve the old cube's clearance ratio at the tighter hex angle:
+        // new_radius = old_radius * tan(half_old_angle) / tan(half_new_angle)
+        //            = 93 * tan(45deg) / tan(30deg) = 93 * 1.732 = ~161, rounded to 160.
+        // Tradeoff: since the current/focused page now also sits at this larger
+        // radius instead of staying at -93, it will render slightly smaller/further
+        // away than before (perspective) - this is expected and intentional so all 6
+        // faces stay visually uniform; retune SO2H_HEX_DEPTH alone (scale stays 0.78,
+        // matching the original per-face size) if the next build still overlaps or
+        // the focused page now looks too small/distant.
+#define SO2H_HEX_DEPTH (-160.0f)
+#define SO2H_HEX_SCALE (0.78f)
         if ((pauseCtx->pageIndex != PAUSE_ITEM) && (pauseCtx->pageIndex != PAUSE_QUEST)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
@@ -785,8 +792,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
             Matrix_RotateYF(0.0f, MTXMODE_NEW);
-            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_PREDRAW_DEPTH, MTXMODE_APPLY);
-            Matrix_Scale(SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, MTXMODE_APPLY);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+            Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->itemPageRoll / 100.0f);
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -812,8 +819,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
             Matrix_RotateYF(-1.0472f, MTXMODE_NEW);
-            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_PREDRAW_DEPTH, MTXMODE_APPLY);
-            Matrix_Scale(SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, MTXMODE_APPLY);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+            Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->itemOotPageRoll / 100.0f);
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -835,8 +842,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
             Matrix_RotateYF(-2.0944f, MTXMODE_NEW);
-            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_PREDRAW_DEPTH, MTXMODE_APPLY);
-            Matrix_Scale(SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, MTXMODE_APPLY);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+            Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->mapPageRoll / 100.0f);
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -866,8 +873,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
             Matrix_RotateYF(-3.1416f, MTXMODE_NEW);
-            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_PREDRAW_DEPTH, MTXMODE_APPLY);
-            Matrix_Scale(SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, MTXMODE_APPLY);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+            Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->questPageRoll / 100.0f);
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -890,8 +897,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
             Matrix_RotateYF(-4.1888f, MTXMODE_NEW);
-            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_PREDRAW_DEPTH, MTXMODE_APPLY);
-            Matrix_Scale(SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, MTXMODE_APPLY);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+            Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->maskPageRoll / 100.0f);
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -919,8 +926,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
             Matrix_RotateYF(-5.236f, MTXMODE_NEW);
-            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_PREDRAW_DEPTH, MTXMODE_APPLY);
-            Matrix_Scale(SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, SO2H_PREDRAW_SCALE, MTXMODE_APPLY);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+            Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->equipOotPageRoll / 100.0f);
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -946,8 +953,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
                     Matrix_RotateYF(0.0f, MTXMODE_NEW);
-                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
                     Matrix_RotateXFApply(-pauseCtx->itemPageRoll / 100.0f);
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -973,8 +980,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
                     Matrix_RotateYF(-1.0472f, MTXMODE_NEW);
-                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
                     Matrix_RotateXFApply(-pauseCtx->itemOotPageRoll / 100.0f);
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -996,9 +1003,22 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
-                Matrix_RotateYF(-1.57f, MTXMODE_NEW);
-                Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                // SO2H FIX (user-reported: Map page never centers itself, stays at an
+                // angle when switched to): this was hardcoded to the OLD 4-face cube's
+                // MAP slot angle (-1.57f, i.e. -90deg), left over from before the hex
+                // expansion. Its own predraw block above (case index 2) and the
+                // save-prompt roll switch below already correctly use -2.0944f
+                // (-120deg, this page's real hex slot). That mismatch meant the page's
+                // background/border frame rendered ~30deg off from where the ring
+                // expects it whenever MAP became the focused page, while the inner
+                // KaleidoScope_DrawWorldMap model (drawn a few lines down with its own
+                // independent Matrix_RotateYF(..., MTXMODE_NEW) using the fixed vanilla
+                // R_PAUSE_WORLD_MAP_YAW tilt) stayed unaffected - so the frame looked
+                // skewed relative to the map art inside it. Fixed to match its actual
+                // hex slot.
+                Matrix_RotateYF(-2.0944f, MTXMODE_NEW);
+                Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
                 Matrix_RotateXFApply(-pauseCtx->mapPageRoll / 100.0f);
 
                 MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -1049,8 +1069,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                 gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
 
                 Matrix_RotateYF(-3.14f, MTXMODE_NEW);
-                Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
                 Matrix_RotateXFApply(-pauseCtx->questPageRoll / 100.0f);
 
                 MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -1072,8 +1092,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
                 Matrix_RotateYF(-4.1888f, MTXMODE_NEW);
-                Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
                 Matrix_RotateXFApply(-pauseCtx->maskPageRoll / 100.0f);
 
                 MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -1098,8 +1118,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
                     Matrix_RotateYF(-5.236f, MTXMODE_NEW);
-                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
                     Matrix_RotateXFApply(-pauseCtx->equipOotPageRoll / 100.0f);
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -1128,45 +1148,45 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                 case PAUSE_ITEM:
                     pauseCtx->itemPageRoll = pauseCtx->roll + 314.0f;
                     Matrix_RotateYF(0.0f, MTXMODE_NEW);
-                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
                 // SO2H NEW
                 case PAUSE_ITEM_OOT:
                     pauseCtx->itemOotPageRoll = pauseCtx->roll + 314.0f;
                     Matrix_RotateYF(-1.0472f, MTXMODE_NEW);
-                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
                 case PAUSE_MAP:
                     pauseCtx->mapPageRoll = pauseCtx->roll + 314.0f;
                     Matrix_RotateYF(-2.0944f, MTXMODE_NEW);
-                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
                 case PAUSE_QUEST:
                     pauseCtx->questPageRoll = pauseCtx->roll + 314.0f;
                     Matrix_RotateYF(-3.1416f, MTXMODE_NEW);
-                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
                 case PAUSE_MASK:
                     pauseCtx->maskPageRoll = pauseCtx->roll + 314.0f;
                     Matrix_RotateYF(-4.1888f, MTXMODE_NEW);
-                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
                 // SO2H NEW
                 case PAUSE_EQUIP_OOT:
                     pauseCtx->equipOotPageRoll = pauseCtx->roll + 314.0f;
                     Matrix_RotateYF(-5.236f, MTXMODE_NEW);
-                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
-                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
             }
