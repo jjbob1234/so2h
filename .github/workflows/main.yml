@@ -75,6 +75,7 @@ jobs:
         retention-days: 3
 
   build-macos:
+    if: false # SO2H: temporarily disabled during Windows-only iteration, re-enable when done
     needs: generate-2ship-otr
     runs-on: macos-14
     steps:
@@ -117,6 +118,7 @@ jobs:
           readme.txt
 
   build-linux:
+    if: false # SO2H: temporarily disabled during Windows-only iteration, re-enable when done
     needs: generate-2ship-otr
     runs-on: ubuntu-22.04
     steps:
