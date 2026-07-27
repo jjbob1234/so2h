@@ -9,14 +9,23 @@
 struct OcarinaStaff;
 struct PlayState;
 
+// #region SO2H [Menu] 6-page hexagon prism coexistence (pause_menu_coexistence_plan.md).
+// PAUSE_ITEM_OOT/PAUSE_EQUIP_OOT are new so2h pages; PAUSE_MAP/PAUSE_QUEST keep their
+// original enum slots but their draw functions are now dual/world-aware (see
+// kaleido_map_dual.c / kaleido_quest_dual.c). Fixed L/R cycle order matches this enum
+// order exactly (STRICTRULES.md rule 19) — never reorder without re-running
+// tools/gen_pause_geometry.py and updating every table derived from it.
 typedef enum PauseMenuPage {
-    /* 0 */ PAUSE_ITEM,
-    /* 1 */ PAUSE_MAP,
-    /* 2 */ PAUSE_QUEST,
-    /* 3 */ PAUSE_MASK,
-    /* 4 */ PAUSE_WORLD_MAP,
-    /* 5 */ PAUSE_PAGE_MAX
+    /* 0 */ PAUSE_ITEM,       // MM Item (2s2h original, unchanged, default landing page)
+    /* 1 */ PAUSE_ITEM_OOT,   // SO2H NEW: OOT Item page
+    /* 2 */ PAUSE_MAP,        // unchanged enum slot, content now Hyrule/Termina aware
+    /* 3 */ PAUSE_QUEST,      // unchanged enum slot, content now custom dual OOT+MM
+    /* 4 */ PAUSE_MASK,       // MM Mask (2s2h original, unchanged)
+    /* 5 */ PAUSE_EQUIP_OOT,  // SO2H NEW: OOT Equipment page
+    /* 6 */ PAUSE_WORLD_MAP,  // unchanged (hidden owl-warp target page, MM original)
+    /* 7 */ PAUSE_PAGE_MAX
 } PauseMenuPage;
+// #endregion
 
 typedef enum PauseState {
     /* 0x00 */ PAUSE_STATE_OFF,
@@ -173,7 +182,24 @@ typedef struct PauseContext {
     /* 0x2BE */ s16 ocarinaButtonsY[5];
     /* 0x2C8 */ u16 unk_2C8; // Uses PauseMenuPage enum for Owl Warp. Never set.
     /* 0x2CA */ s16 unk_2CA; // Uses OwlWarpId enum for Owl Warp. Never set.
-} PauseContext; // size = 0x2D0
+
+    // #region SO2H [Menu] New fields for the 2 new hexagon-prism pages. Appended at the
+    // struct tail — 2s2h is a native PC recomp, not byte-matched to the ROM anymore, so
+    // the historical /* 0xNNN */ offset comments above are documentation only and do not
+    // need to stay contiguous/accurate past this point. See pause_menu_coexistence_plan.md.
+    Vtx* itemOotPageVtx;
+    Vtx* itemOotVtx;
+    Vtx* equipOotPageVtx;
+    Vtx* equipOotVtx;
+    f32 itemOotPageRoll;  // rotation of the OOT Item page into the screen
+    f32 equipOotPageRoll; // rotation of the OOT Equip page into the screen
+    // OOT Equip page Link-doll render target, ported from SoH's PauseContext
+    // (gPauseLinkFrameBuffer / PAUSE_EQUIP_PLAYER_WIDTH/HEIGHT = 64x112). Allocated only
+    // when the OOT Equip page is actually reachable (patch 0005 real content).
+    u8* playerSegment;
+    SkelAnime playerSkelAnime;
+    // #endregion
+} PauseContext; // size = 0x2D0 + so2h tail (no longer meaningful post-recomp)
 
 #define IS_PAUSE_STATE_GAMEOVER(pauseCtx) \
     (((pauseCtx)->state >= PAUSE_STATE_GAMEOVER_0) && ((pauseCtx)->state <= PAUSE_STATE_GAMEOVER_10))

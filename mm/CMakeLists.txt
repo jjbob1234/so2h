@@ -30,6 +30,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 endif()
 
 
+include(FetchContent)
+
 FetchContent_Declare(
     dr_libs
     GIT_REPOSITORY https://github.com/mackron/dr_libs.git

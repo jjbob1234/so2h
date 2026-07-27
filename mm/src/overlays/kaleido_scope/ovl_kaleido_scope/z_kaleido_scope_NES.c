@@ -207,38 +207,55 @@ s16 sGameOverEnvB = 0;
 
 s16 sInDungeonScene = false;
 
+// #region SO2H [Menu] so2h 6-page hexagon prism switch tables - mechanically generated
+// by tools/gen_pause_geometry.py (STRICTRULES.md rule 20). Never hand-edit; regenerate
+// and re-paste instead. Enum/table order matches the fixed L/R cycle order in
+// z64pause_menu.h's PauseMenuPage.
 f32 sPageSwitchEyeDx[] = {
-    -PAUSE_EYE_DIST * (PAUSE_MAP_X - PAUSE_ITEM_X) / 16, // From PAUSE_ITEM to PAUSE_MAP (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_MASK_X - PAUSE_ITEM_X) / 16,  // From PAUSE_ITEM to PAUSE_MASK (switching left)
-    -PAUSE_EYE_DIST*(PAUSE_QUEST_X - PAUSE_MAP_X) / 16,  // From PAUSE_MAP to PAUSE_QUEST (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_ITEM_X - PAUSE_MAP_X) / 16,   // From PAUSE_MAP to PAUSE_ITEM (switching left)
-    -PAUSE_EYE_DIST*(PAUSE_MASK_X - PAUSE_QUEST_X) / 16, // From PAUSE_QUEST to PAUSE_MASK (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_MAP_X - PAUSE_QUEST_X) / 16,  // From PAUSE_QUEST to PAUSE_MAP (switching left)
-    -PAUSE_EYE_DIST*(PAUSE_ITEM_X - PAUSE_MASK_X) / 16,  // From PAUSE_MASK to PAUSE_ITEM (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_QUEST_X - PAUSE_MASK_X) / 16, // From PAUSE_MASK to PAUSE_QUEST (switching left)
+    PAUSE_EYE_DIST * -0.0541266f, // From PAUSE_ITEM to PAUSE_ITEM_OOT (switching right)
+    PAUSE_EYE_DIST * 0.0541266f,  // From PAUSE_ITEM to PAUSE_EQUIP_OOT (switching left)
+    PAUSE_EYE_DIST * 0.0f,        // From PAUSE_ITEM_OOT to PAUSE_MAP (switching right)
+    PAUSE_EYE_DIST * 0.0541266f,  // From PAUSE_ITEM_OOT to PAUSE_ITEM (switching left)
+    PAUSE_EYE_DIST * 0.0541266f,  // From PAUSE_MAP to PAUSE_QUEST (switching right)
+    PAUSE_EYE_DIST * 0.0f,        // From PAUSE_MAP to PAUSE_ITEM_OOT (switching left)
+    PAUSE_EYE_DIST * 0.0541266f,  // From PAUSE_QUEST to PAUSE_MASK (switching right)
+    PAUSE_EYE_DIST * -0.0541266f, // From PAUSE_QUEST to PAUSE_MAP (switching left)
+    PAUSE_EYE_DIST * 0.0f,        // From PAUSE_MASK to PAUSE_EQUIP_OOT (switching right)
+    PAUSE_EYE_DIST * -0.0541266f, // From PAUSE_MASK to PAUSE_QUEST (switching left)
+    PAUSE_EYE_DIST * -0.0541266f, // From PAUSE_EQUIP_OOT to PAUSE_ITEM (switching right)
+    PAUSE_EYE_DIST * 0.0f,        // From PAUSE_EQUIP_OOT to PAUSE_MASK (switching left)
 };
 
 f32 sPageSwitchEyeDz[] = {
-    -PAUSE_EYE_DIST * (PAUSE_MAP_Z - PAUSE_ITEM_Z) / 16, // From PAUSE_ITEM to PAUSE_MAP (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_MASK_Z - PAUSE_ITEM_Z) / 16,  // From PAUSE_ITEM to PAUSE_MASK (switching left)
-    -PAUSE_EYE_DIST*(PAUSE_QUEST_Z - PAUSE_MAP_Z) / 16,  // From PAUSE_MAP to PAUSE_QUEST (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_ITEM_Z - PAUSE_MAP_Z) / 16,   // From PAUSE_MAP to PAUSE_ITEM (switching left)
-    -PAUSE_EYE_DIST*(PAUSE_MASK_Z - PAUSE_QUEST_Z) / 16, // From PAUSE_QUEST to PAUSE_MASK (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_MAP_Z - PAUSE_QUEST_Z) / 16,  // From PAUSE_QUEST to PAUSE_MAP (switching left)
-    -PAUSE_EYE_DIST*(PAUSE_ITEM_Z - PAUSE_MASK_Z) / 16,  // From PAUSE_MASK to PAUSE_ITEM (switching right)
-    -PAUSE_EYE_DIST*(PAUSE_QUEST_Z - PAUSE_MASK_Z) / 16, // From PAUSE_MASK to PAUSE_QUEST (switching left)
+    PAUSE_EYE_DIST * -0.03125f, // From PAUSE_ITEM to PAUSE_ITEM_OOT (switching right)
+    PAUSE_EYE_DIST * -0.03125f, // From PAUSE_ITEM to PAUSE_EQUIP_OOT (switching left)
+    PAUSE_EYE_DIST * -0.0625f,  // From PAUSE_ITEM_OOT to PAUSE_MAP (switching right)
+    PAUSE_EYE_DIST * 0.03125f,  // From PAUSE_ITEM_OOT to PAUSE_ITEM (switching left)
+    PAUSE_EYE_DIST * -0.03125f, // From PAUSE_MAP to PAUSE_QUEST (switching right)
+    PAUSE_EYE_DIST * 0.0625f,   // From PAUSE_MAP to PAUSE_ITEM_OOT (switching left)
+    PAUSE_EYE_DIST * 0.03125f,  // From PAUSE_QUEST to PAUSE_MASK (switching right)
+    PAUSE_EYE_DIST * 0.03125f,  // From PAUSE_QUEST to PAUSE_MAP (switching left)
+    PAUSE_EYE_DIST * 0.0625f,   // From PAUSE_MASK to PAUSE_EQUIP_OOT (switching right)
+    PAUSE_EYE_DIST * -0.03125f, // From PAUSE_MASK to PAUSE_QUEST (switching left)
+    PAUSE_EYE_DIST * 0.03125f,  // From PAUSE_EQUIP_OOT to PAUSE_ITEM (switching right)
+    PAUSE_EYE_DIST * -0.0625f,  // From PAUSE_EQUIP_OOT to PAUSE_MASK (switching left)
 };
 
 u16 sPageSwitchNextPageIndex[] = {
-    PAUSE_MAP,   // From PAUSE_ITEM (switching right)
-    PAUSE_MASK,  // From PAUSE_ITEM (switching left)
-    PAUSE_QUEST, // From PAUSE_MAP (switching right)
-    PAUSE_ITEM,  // From PAUSE_MAP (switching left)
-    PAUSE_MASK,  // From PAUSE_QUEST (switching right)
-    PAUSE_MAP,   // From PAUSE_QUEST (switching left)
-    PAUSE_ITEM,  // From PAUSE_MASK (switching right)
-    PAUSE_QUEST, // From PAUSE_MASK (switching left)
+    PAUSE_ITEM_OOT,  // From PAUSE_ITEM (switching right)
+    PAUSE_EQUIP_OOT, // From PAUSE_ITEM (switching left)
+    PAUSE_MAP,       // From PAUSE_ITEM_OOT (switching right)
+    PAUSE_ITEM,      // From PAUSE_ITEM_OOT (switching left)
+    PAUSE_QUEST,     // From PAUSE_MAP (switching right)
+    PAUSE_ITEM_OOT,  // From PAUSE_MAP (switching left)
+    PAUSE_MASK,      // From PAUSE_QUEST (switching right)
+    PAUSE_MAP,       // From PAUSE_QUEST (switching left)
+    PAUSE_EQUIP_OOT, // From PAUSE_MASK (switching right)
+    PAUSE_QUEST,     // From PAUSE_MASK (switching left)
+    PAUSE_ITEM,      // From PAUSE_EQUIP_OOT (switching right)
+    PAUSE_MASK,      // From PAUSE_EQUIP_OOT (switching left)
 };
+// #endregion
 
 f32 sPauseMenuVerticalOffset = 0.0f;
 f32 D_8082B90C = 0.0f;
@@ -733,6 +750,12 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             }
         }
 
+        // #region SO2H [Menu] Adjacent-face background predraw, extended for the 6-face
+        // hexagon prism. Rule (unchanged from 2s2h original, generalized): predraw face F's
+        // background unless the current page IS F (drawn by the main switch below instead)
+        // or is F's direct opposite (180 deg away / index+3 mod 6, therefore fully occluded
+        // and never visible). Opposite pairs: ITEM<->QUEST, ITEM_OOT<->MASK, MAP<->EQUIP_OOT.
+        // Rotation angles are -60deg * enum index (tools/gen_pause_geometry.py order).
         if ((pauseCtx->pageIndex != PAUSE_ITEM) && (pauseCtx->pageIndex != PAUSE_QUEST)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
@@ -755,7 +778,12 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_ITEM);
         }
 
-        if ((pauseCtx->pageIndex != PAUSE_MAP) && (pauseCtx->pageIndex != PAUSE_MASK)) {
+        // SO2H NEW: OOT Item page background predraw (hexagon face index 1, -60deg).
+        // Guarded on itemOotPageVtx being allocated - real content/allocation lands in
+        // patch 0004; until then the page exists in the cycle but draws nothing rather
+        // than crashing on a null Vtx buffer.
+        if ((pauseCtx->pageIndex != PAUSE_ITEM_OOT) && (pauseCtx->pageIndex != PAUSE_MASK) &&
+            (pauseCtx->itemOotPageVtx != NULL)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
             gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0, PRIMITIVE, 0,
@@ -763,7 +791,30 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
-            Matrix_RotateYF(-1.57f, MTXMODE_NEW);
+            Matrix_RotateYF(-1.0472f, MTXMODE_NEW);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+            Matrix_RotateXFApply(-pauseCtx->itemOotPageRoll / 100.0f);
+
+            MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
+
+            POLY_OPA_DISP =
+                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx, sItemPageBgTextures);
+
+            GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
+            KaleidoScope_DrawItemSelectOot(play);
+            GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
+        }
+
+        if ((pauseCtx->pageIndex != PAUSE_MAP) && (pauseCtx->pageIndex != PAUSE_EQUIP_OOT)) {
+            gDPPipeSync(POLY_OPA_DISP++);
+
+            gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0, PRIMITIVE, 0,
+                              TEXEL0, 0, SHADE, 0);
+
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
+
+            Matrix_RotateYF(-2.0944f, MTXMODE_NEW);
             Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
             Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->mapPageRoll / 100.0f);
@@ -794,7 +845,7 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
-            Matrix_RotateYF(-3.14f, MTXMODE_NEW);
+            Matrix_RotateYF(-3.1416f, MTXMODE_NEW);
             Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
             Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->questPageRoll / 100.0f);
@@ -808,7 +859,7 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_QUEST);
         }
 
-        if ((pauseCtx->pageIndex != PAUSE_MASK) && (pauseCtx->pageIndex != PAUSE_MAP)) {
+        if ((pauseCtx->pageIndex != PAUSE_MASK) && (pauseCtx->pageIndex != PAUSE_ITEM_OOT)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
             gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
@@ -818,7 +869,7 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
-            Matrix_RotateYF(1.57f, MTXMODE_NEW);
+            Matrix_RotateYF(-4.1888f, MTXMODE_NEW);
             Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
             Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
             Matrix_RotateXFApply(-pauseCtx->maskPageRoll / 100.0f);
@@ -831,6 +882,38 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             KaleidoScope_DrawMaskSelect(play);
             GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_MASK);
         }
+
+        // SO2H NEW: OOT Equip page background predraw (hexagon face index 5, -300deg).
+        // Guarded on equipOotPageVtx being allocated - real content/allocation lands in
+        // patch 0005 (Link doll framebuffer); until then draws nothing rather than
+        // crashing on a null Vtx buffer.
+        if ((pauseCtx->pageIndex != PAUSE_EQUIP_OOT) && (pauseCtx->pageIndex != PAUSE_MAP) &&
+            (pauseCtx->equipOotPageVtx != NULL)) {
+            gDPPipeSync(POLY_OPA_DISP++);
+
+            gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
+
+            gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0, PRIMITIVE, 0,
+                              TEXEL0, 0, SHADE, 0);
+
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
+
+            Matrix_RotateYF(-5.236f, MTXMODE_NEW);
+            Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+            Matrix_RotateXFApply(-pauseCtx->equipOotPageRoll / 100.0f);
+
+            MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
+
+            POLY_OPA_DISP =
+                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx, sMaskPageBgTextures);
+
+            GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
+            KaleidoScope_DrawEquipmentOot(play);
+            GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
+        }
+
+        // #endregion
 
         switch (pauseCtx->pageIndex) {
             case PAUSE_ITEM:
@@ -854,6 +937,33 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                     GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
                     KaleidoScope_DrawItemSelect(play);
+                    GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                }
+                break;
+
+            // SO2H NEW: OOT Item page (hexagon face index 1)
+            case PAUSE_ITEM_OOT:
+                // Guarded on itemOotPageVtx being allocated (see patch 0004, not yet done)
+                if (pauseCtx->itemOotPageVtx != NULL) {
+                    gDPPipeSync(POLY_OPA_DISP++);
+
+                    gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0,
+                                      PRIMITIVE, 0, TEXEL0, 0, SHADE, 0);
+
+                    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
+
+                    Matrix_RotateYF(-1.0472f, MTXMODE_NEW);
+                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_RotateXFApply(-pauseCtx->itemOotPageRoll / 100.0f);
+
+                    MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
+
+                    POLY_OPA_DISP =
+                        KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx, sItemPageBgTextures);
+
+                    GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                    KaleidoScope_DrawItemSelectOot(play);
                     GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
                 }
                 break;
@@ -941,7 +1051,7 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
 
-                Matrix_RotateYF(1.57f, MTXMODE_NEW);
+                Matrix_RotateYF(-4.1888f, MTXMODE_NEW);
                 Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
                 Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
                 Matrix_RotateXFApply(-pauseCtx->maskPageRoll / 100.0f);
@@ -954,6 +1064,33 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                 GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
                 KaleidoScope_DrawMaskSelect(play);
                 GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                break;
+
+            // SO2H NEW: OOT Equip page (hexagon face index 5)
+            case PAUSE_EQUIP_OOT:
+                // Guarded on equipOotPageVtx being allocated (see patch 0005, not yet done)
+                if (pauseCtx->equipOotPageVtx != NULL) {
+                    gDPPipeSync(POLY_OPA_DISP++);
+
+                    gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, SHADE, 0, TEXEL0, 0,
+                                      PRIMITIVE, 0, TEXEL0, 0, SHADE, 0);
+
+                    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 180, 180, 120, 255);
+
+                    Matrix_RotateYF(-5.236f, MTXMODE_NEW);
+                    Matrix_Translate(0.0f, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_RotateXFApply(-pauseCtx->equipOotPageRoll / 100.0f);
+
+                    MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
+
+                    POLY_OPA_DISP =
+                        KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx, sMaskPageBgTextures);
+
+                    GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                    KaleidoScope_DrawEquipmentOot(play);
+                    GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                }
                 break;
         }
     }
@@ -975,23 +1112,39 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                     Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
+                // SO2H NEW
+                case PAUSE_ITEM_OOT:
+                    pauseCtx->itemOotPageRoll = pauseCtx->roll + 314.0f;
+                    Matrix_RotateYF(-1.0472f, MTXMODE_NEW);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
+                    break;
                 case PAUSE_MAP:
                     pauseCtx->mapPageRoll = pauseCtx->roll + 314.0f;
-                    Matrix_RotateYF(-1.57f, MTXMODE_NEW);
+                    Matrix_RotateYF(-2.0944f, MTXMODE_NEW);
                     Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
                     Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
                 case PAUSE_QUEST:
                     pauseCtx->questPageRoll = pauseCtx->roll + 314.0f;
-                    Matrix_RotateYF(-3.14f, MTXMODE_NEW);
+                    Matrix_RotateYF(-3.1416f, MTXMODE_NEW);
                     Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
                     Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
                     break;
                 case PAUSE_MASK:
                     pauseCtx->maskPageRoll = pauseCtx->roll + 314.0f;
-                    Matrix_RotateYF(1.57f, MTXMODE_NEW);
+                    Matrix_RotateYF(-4.1888f, MTXMODE_NEW);
+                    Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
+                    Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
+                    break;
+                // SO2H NEW
+                case PAUSE_EQUIP_OOT:
+                    pauseCtx->equipOotPageRoll = pauseCtx->roll + 314.0f;
+                    Matrix_RotateYF(-5.236f, MTXMODE_NEW);
                     Matrix_Translate(0, sPauseMenuVerticalOffset / 100.0f, -93.0f, MTXMODE_APPLY);
                     Matrix_Scale(0.78f, 0.78f, 0.78f, 1);
                     Matrix_RotateXFApply(-pauseCtx->roll / 100.0f);
@@ -2996,6 +3149,23 @@ void KaleidoScope_UpdateCursorSize(PlayState* play) {
                 pauseCtx->cursorHeight = 15.0f;
                 break;
 
+            // SO2H NEW: OOT Item/Equip pages - placeholder cursor grid reusing the
+            // MM item/mask cursor tables until patches 0004/0005 add real OOT-specific
+            // cursor-position tables for these pages' actual content.
+            case PAUSE_ITEM_OOT:
+                pauseCtx->cursorX = sItemMaskCursorsX[pauseCtx->cursorXIndex[PAUSE_ITEM_OOT]];
+                pauseCtx->cursorY = sItemMaskCursorsY[pauseCtx->cursorYIndex[PAUSE_ITEM_OOT]];
+                pauseCtx->cursorWidth = 15.0f;
+                pauseCtx->cursorHeight = 15.0f;
+                break;
+
+            case PAUSE_EQUIP_OOT:
+                pauseCtx->cursorX = sItemMaskCursorsX[pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT]];
+                pauseCtx->cursorY = sItemMaskCursorsY[pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT]];
+                pauseCtx->cursorWidth = 15.0f;
+                pauseCtx->cursorHeight = 15.0f;
+                break;
+
             default:
                 break;
         }
@@ -4274,6 +4444,15 @@ void KaleidoScope_Update(PlayState* play) {
 
                 case PAUSE_MASK:
                     KaleidoScope_UpdateMaskCursor(play);
+                    break;
+
+                // SO2H NEW: OOT Item/Equip pages
+                case PAUSE_ITEM_OOT:
+                    KaleidoScope_UpdateItemCursorOot(play);
+                    break;
+
+                case PAUSE_EQUIP_OOT:
+                    KaleidoScope_UpdateEquipCursorOot(play);
                     break;
             }
 

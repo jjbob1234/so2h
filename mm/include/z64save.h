@@ -392,6 +392,31 @@ typedef struct RandoSaveInfo {
     u16 sariaPriorityItems[16];
 } RandoSaveInfo;
 
+// #region SO2H [Scene] patch 0003 - scene-origin (OOT/MM) tagging system. See
+// mm/2s2h/Compat/Scene/z_scene_origin.h and patches/0003_scene_origin_tagging.md.
+// Which world's content is currently active (drives Map/Quest dual-page display and
+// will drive the not-yet-implemented Song of Time world-swap feature). Defined here,
+// not in z_scene_origin.h, because it must be persisted in ShipSaveInfo below and
+// z64save.h is included far earlier/wider than the Compat/Scene headers.
+typedef enum SceneOrigin {
+    /* 0 */ SCENE_ORIGIN_MM,
+    /* 1 */ SCENE_ORIGIN_OOT
+} SceneOrigin;
+
+// Persisted so2h-specific save fields, nested the same way `RandoSaveInfo` already is
+// inside ShipSaveInfo below. Kept as its own sub-struct (rather than loose fields) so
+// future so2h save additions (e.g. rule 12's full OOT item/equipment save slots, once
+// that patch is scoped) have one clearly-labeled place to grow, instead of being mixed
+// into 2s2h's own ShipSaveInfo fields.
+typedef struct So2hSaveInfo {
+    SceneOrigin currentWorld;
+    // SO2H TODO (blocking follow-up, STRICTRULES.md rule 12/22): full OOT key item/
+    // equipment save slots (swords, shields, bow, hookshot, bottles, quest items,
+    // upgrades) are NOT allocated yet. This is a separate, larger patch than 0003 -
+    // recorded here as a named blocking dependency rather than faked around.
+} So2hSaveInfo;
+// #endregion
+
 // These are values added by 2S2H that we need to be persisted to the save file
 // See `ShipSaveContext` for values on the SaveContext that aren't persisted.
 typedef struct ShipSaveInfo {
@@ -405,6 +430,9 @@ typedef struct ShipSaveInfo {
     char commitHash[8];
     RandoSaveInfo rando;
     u8 bombArrowsEquipped;
+    // #region SO2H [Scene] patch 0003 - appended at tail, same pattern as `rando`.
+    So2hSaveInfo so2h;
+    // #endregion
 } ShipSaveInfo;
 // #endregion
 
