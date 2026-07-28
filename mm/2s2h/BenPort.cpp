@@ -38,6 +38,7 @@
 #include <SDL2/SDL_scancode.h>
 #endif
 #include "Extractor/Extract.h"
+#include "Extractor/OotExtract.h"
 // OTRTODO
 // #include <functions.h>
 #include "2s2h/Enhancements/FrameInterpolation/FrameInterpolation.h"
@@ -204,6 +205,7 @@ typedef enum ExtractSteps {
     ES_EXTRACT_ARGS,
     ES_EXTRACT,
     ES_VERIFY,
+    ES_OOT_CHECK,
 } ExtractSteps;
 
 typedef enum PromptSteps {
@@ -213,6 +215,10 @@ typedef enum PromptSteps {
     PS_DUPE,
     PS_WAIT,
     PS_NONE,
+    PS_OOT_FILE_CHECK,
+    PS_OOT_LOCAL,
+    PS_OOT_FIRST,
+    PS_OOT_DOEXTRACT,
 } PromptSteps;
 
 typedef enum WindowsSteps {
@@ -275,6 +281,8 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
         }
     }
     Extractor extract;
+    OotExtractor ootExtract;
+    std::vector<std::string> ootRoms;
     PromptSteps promptStep = PS_FILE_CHECK;
     std::atomic<size_t> extractCount = 0, totalExtract = 0;
 
@@ -525,8 +533,76 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                                           "No ROM O2R files detected. Please generate a ROM O2R and relaunch.", "OK",
                                           "", [&]() { exit(0); });
                 }
-                extractDone = true;
+                extractStep = ES_OOT_CHECK;
+                promptStep = PS_OOT_FILE_CHECK;
                 continue;
+            }
+            case ES_OOT_CHECK: {
+                switch (promptStep) {
+                    case PS_OOT_FILE_CHECK: {
+                        if (!std::filesystem::exists(
+                                Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName))) {
+                            BenGui::RegisterPopup(
+                                "OOT O2R", "An Ocarina Of Time O2R must be generated, generate now? yes/no", "Yes",
+                                "No", [&]() { promptStep = PS_OOT_LOCAL; }, [&]() { extractDone = true; });
+                        } else {
+                            extractDone = true;
+                        }
+                        continue;
+                    }
+                    case PS_OOT_LOCAL: {
+                        ootExtract = OotExtractor();
+                        ootRoms.clear();
+                        ootExtract.SetSearchPath(installPath);
+                        ootExtract.GetRoms(ootRoms);
+                        ootExtract.SetSearchPath(dataPath);
+                        ootExtract.GetRoms(ootRoms);
+                        if (!ootRoms.empty()) {
+                            BenGui::RegisterPopup(
+                                "OOT ROM found",
+                                "An Ocarina of Time rom was found in the application directory. Process it?", "Yes",
+                                "No",
+                                [&]() {
+                                    if (ootExtract.RunFileStandalone(ootRoms.front())) {
+                                        promptStep = PS_OOT_DOEXTRACT;
+                                    } else {
+                                        BenGui::RegisterPopup(
+                                            "OOT ROM Error",
+                                            "The found rom does not match the supported OOT version (NTSC N64 "
+                                            "1.0, US). Skipping OOT menu asset generation.",
+                                            "OK", "", [&]() { extractDone = true; });
+                                    }
+                                },
+                                [&]() { promptStep = PS_OOT_FIRST; });
+                        } else {
+                            promptStep = PS_OOT_FIRST;
+                        }
+                        continue;
+                    }
+                    case PS_OOT_FIRST: {
+                        if (!ootExtract.ManuallySearchForRomMatchingType(RomSearchMode::Vanilla)) {
+                            // User cancelled/no rom provided: continue booting without OOT menu assets.
+                            extractDone = true;
+                            continue;
+                        }
+                        promptStep = PS_OOT_DOEXTRACT;
+                        continue;
+                    }
+                    case PS_OOT_DOEXTRACT: {
+                        extractionTask = threadPool->submit_task([&]() -> void {
+                            ootExtract.CallZapd(installPath, Ship::Context::GetAppDirectoryPath(appShortName),
+                                                &extractCount, &totalExtract);
+                            extractCount = 0;
+                            totalExtract = 0;
+                            extractDone = true;
+                        });
+                        continue;
+                    }
+                    default:
+                        extractDone = true;
+                        continue;
+                }
+                break;
             }
             default:
                 break;
@@ -601,6 +677,13 @@ void OTRGlobals::Initialize() {
     std::string mmPath = Ship::Context::LocateFileAcrossAppDirs("mm.o2r", appShortName);
     if (std::filesystem::exists(mmPath)) {
         context->GetResourceManager()->GetArchiveManager()->AddArchive(mmPath);
+    }
+
+    // Optional: OOT menu-asset archive (pause menu icons/maps only). Not required to boot; the pause
+    // menu falls back to its existing placeholder behavior when this is absent.
+    std::string ootPath = Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName);
+    if (std::filesystem::exists(ootPath)) {
+        context->GetResourceManager()->GetArchiveManager()->AddArchive(ootPath);
     }
 
     std::unordered_set<uint32_t> validHashes = { MM_NTSC_US_10, MM_NTSC_US_GC };
