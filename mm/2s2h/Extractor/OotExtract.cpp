@@ -534,8 +534,8 @@ bool OotExtractor::CallZapd(std::string installPath, std::string exportdir, std:
     char portVersion[18];
     std::array<const char*, argc> argv;
     const char* version = GetZapdVerStr();
-    // Menu-only scope: point ZAPD at just the textures subfolder (icon/map/parameter archives) instead
-    // of the whole assets/xml/<version> tree, so oot.o2r only contains pause-menu assets.
+    // Full extraction, matching SoH's own Extract.cpp exactly: point ZAPD at the whole
+    // assets/xml/<version> tree so oot.o2r contains the complete OOT asset set.
     const char* otrFile = "oot.o2r";
 
     std::string romPath = std::filesystem::absolute(mCurrentRomPath).string();
@@ -552,7 +552,7 @@ bool OotExtractor::CallZapd(std::string installPath, std::string exportdir, std:
 
     std::filesystem::current_path(tempdir);
 
-    snprintf(xmlPath, 1024, "assets/xml/%s/textures", version);
+    snprintf(xmlPath, 1024, "assets/xml/%s", version);
     snprintf(confPath, 1024, "assets/Config_%s.xml", version);
     snprintf(portVersion, 18, "%d.%d.%d", gBuildVersionMajor, gBuildVersionMinor, gBuildVersionPatch);
 

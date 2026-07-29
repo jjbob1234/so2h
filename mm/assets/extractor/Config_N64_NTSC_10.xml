@@ -2,19 +2,7 @@
     <SymbolMap File="symbols/SymbolMap_OoTMqDbg.txt"/>
     <ActorList File="symbols/ActorList_OoTMqDbg.txt"/>
     <ObjectList File="symbols/ObjectList_OoTMqDbg.txt"/>
-    <!-- ZAPD's HandleExtract (Main.cpp) only runs its ExtractDirectory loop body when
-         cfg.externalFiles has at least one entry -- the entry's XmlPath/OutPath is not
-         actually used in that specific branch, it's just a required trigger. This is a
-         real menu-only file already shipped in our scoped textures/ folder; kept as a
-         no-op ExternalFile purely to make the loop execute. Do NOT remove -- without
-         it ZAPD parses zero files and oot.o2r contains only the Version/portVersion
-         entries (1KB).
-
-         ExternalXMLFolder MUST be set and MUST combine with the ExternalFile's XmlPath
-         into a real, readable file. ExtractFunc (called once per real texture file)
-         re-parses cfg.externalXmlFolder/extFile.xmlPath on every single call before it
-         ever reaches the real file -- if that path doesn't resolve, ExtractFunc returns
-         early and the real texture is never parsed, silently, per file, every time. -->
-    <ExternalXMLFolder Path="assets/xml/N64_NTSC_10/textures/"/>
-    <ExternalFile XmlPath="icon_item_static.xml" OutPath="textures/icon_item_static/"/>
+    <ExternalXMLFolder Path="assets/xml/N64_NTSC_10/"/>
+    <TexturePool File="TexturePool.xml"/>
+    <ExternalFile XmlPath="objects/gameplay_keep.xml" OutPath="objects/gameplay_keep/"/>
 </Root>
