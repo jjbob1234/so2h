@@ -25,6 +25,11 @@
 #define MM_NTSC_US_10 0x5354631C
 #define MM_NTSC_US_GC 0xB443EB08
 
+// OOT ROM version hash for the "version" resource stored inside oot.o2r.
+// Must match OotExtract.cpp's own OOT_NTSC_10 constant (the only OOT ROM version
+// the extractor accepts) so a valid oot.o2r isn't rejected by the archive version check.
+#define OOT_NTSC_US_10 0xEC7011B7
+
 #ifdef __cplusplus
 #include <ship/Context.h>
 

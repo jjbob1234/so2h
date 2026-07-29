@@ -686,7 +686,10 @@ void OTRGlobals::Initialize() {
         context->GetResourceManager()->GetArchiveManager()->AddArchive(ootPath);
     }
 
-    std::unordered_set<uint32_t> validHashes = { MM_NTSC_US_10, MM_NTSC_US_GC };
+    // OOT_NTSC_US_10 must be allowed here too, since a valid oot.o2r (added just above
+    // via AddArchive(ootPath)) reports that hash as its game version, and every loaded
+    // archive's version is checked against this set below.
+    std::unordered_set<uint32_t> validHashes = { MM_NTSC_US_10, MM_NTSC_US_GC, OOT_NTSC_US_10 };
 
 #if (_DEBUG)
     auto defaultLogLevel = spdlog::level::debug;
@@ -1386,10 +1389,13 @@ extern "C" uint32_t ResourceMgr_GetGamePlatform(int index) {
 
     switch (version) {
         case MM_NTSC_US_10:
+        case OOT_NTSC_US_10:
             return GAME_PLATFORM_N64;
         case MM_NTSC_US_GC:
             return GAME_PLATFORM_GC;
     }
+
+    return GAME_PLATFORM_N64;
 }
 
 extern "C" uint32_t ResourceMgr_GetGameRegion(int index) {
@@ -1399,8 +1405,11 @@ extern "C" uint32_t ResourceMgr_GetGameRegion(int index) {
     switch (version) {
         case MM_NTSC_US_10:
         case MM_NTSC_US_GC:
+        case OOT_NTSC_US_10:
             return GAME_REGION_NTSC;
     }
+
+    return GAME_REGION_NTSC;
 }
 
 extern "C" void ResourceMgr_LoadDirectory(const char* resName) {
