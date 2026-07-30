@@ -4,6 +4,7 @@
 #include <ship/utils/StringHelper.h>
 #include "2s2h/resource/type/TextMM.h"
 #include <message_data_static.h>
+#include <spdlog/spdlog.h>
 
 extern "C" MessageTableEntry* sMessageTableNES;
 extern "C" MessageTableEntry* sMessageTableCredits;
@@ -56,6 +57,19 @@ extern "C" void OTRMessage_Init() {
     auto file2 =
         std::static_pointer_cast<SOH::TextMM>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
             "text/staff_message_data_static/staff_message_data_static"));
+
+    // Defensive null-check (see z_message_OTR.cpp / OTRMessage_Init crash reports): LoadResource
+    // can return nullptr (e.g. missing/corrupt archive entry), and file2 used to be dereferenced
+    // unconditionally right below, crashing here. Mirrors the existing null-check pattern in
+    // OTRMessage_LoadTable above.
+    if (file2 == nullptr) {
+        SPDLOG_ERROR("OTRMessage_Init: failed to load "
+                     "text/staff_message_data_static/staff_message_data_static; credits message "
+                     "table will be empty.");
+        sMessageTableCredits = nullptr;
+        return;
+    }
+
     sMessageTableCredits = (MessageTableEntry*)malloc(sizeof(MessageTableEntry) * file2->messages.size());
 
     for (size_t i = 0; i < file2->messages.size(); i++) {

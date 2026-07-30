@@ -1,8 +1,15 @@
 #include "DeveloperTools.h"
 #include "BenPort.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#include <ship/Context.h>
+#include <ship/resource/ResourceManager.h>
+#include <ship/resource/archive/ArchiveManager.h>
+#include <spdlog/spdlog.h>
 #include "2s2h/GameInteractor/GameInteractor.h"
 #include "2s2h/ShipInit.hpp"
+#include "2s2h/OotAssets.h"
+
+void ValidateOotIconAssetsFor100PercentSave();
 
 extern "C" {
 #include "macros.h"
@@ -105,6 +112,44 @@ void SetSaveFileInfo() {
                 }
                 isPersistentBits >>= 2;
             }
+        }
+
+        ValidateOotIconAssetsFor100PercentSave();
+    }
+}
+
+// Scope note (surfaced to user): this does NOT add any real pause-menu UI display for OOT
+// items - in an unmodded base game there's no OOT item content in the 100% debug save to
+// show there (all OOT-derived pause-menu icon/map textures merged in under "ootr_" are
+// currently unreferenced by any consumer). This only validates/logs that the merge actually
+// placed those "ootr_" icon assets where OotAssets.h's future consumers expect them, so a
+// broken merge is caught here instead of silently at first real use.
+void ValidateOotIconAssetsFor100PercentSave() {
+    if (!OotAssets::IsOotContentAvailable()) {
+        SPDLOG_INFO("DeveloperTools: 100% debug save - no merged OOT content present (unmerged "
+                    "mm.o2r); skipping ootr_ pause-menu icon validation.");
+        return;
+    }
+
+    static const char* const kPauseMenuIconOriginalPaths[] = {
+        "textures/icon_item_static/icon_item_static",
+        "textures/map_48x85_static/map_48x85_static",
+        "textures/map_name_static/map_name_static",
+        "textures/parameter_static/parameter_static",
+        "textures/item_name_static/item_name_static",
+    };
+
+    auto archiveManager = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
+    for (const char* originalPath : kPauseMenuIconOriginalPaths) {
+        std::string ootrPath = OotAssets::GetOotIconVariant(originalPath);
+        if (archiveManager == nullptr || !archiveManager->HasFile(ootrPath)) {
+            SPDLOG_WARN("DeveloperTools: 100% debug save - expected merged OOT pause-menu icon "
+                        "asset missing: {}",
+                        ootrPath);
+        } else {
+            SPDLOG_INFO("DeveloperTools: 100% debug save - merged OOT pause-menu icon asset "
+                        "present: {}",
+                        ootrPath);
         }
     }
 }

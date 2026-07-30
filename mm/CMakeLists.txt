@@ -129,6 +129,10 @@ else()
     )
 endif()
 
+# tools/* (merge_o2r_cli.cpp and friends) is a standalone executable's source, not part of the
+# 2ship target - exclude it here so it isn't compiled twice / doesn't pull in a second main().
+list(FILTER ship__Extractor EXCLUDE REGEX "2s2h/Extractor/tools/*")
+
 # src (decomp) {{{
 file(GLOB_RECURSE src__ RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.c" "src/*.h")
 
@@ -650,6 +654,25 @@ if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS")
     target_link_libraries(${PROJECT_NAME} PRIVATE "${ADDITIONAL_LIBRARY_DEPENDENCIES}" $<TARGET_OBJECTS:pathconf> )
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE "${ADDITIONAL_LIBRARY_DEPENDENCIES}")
+endif()
+
+# O2RMerger (mm.o2r + oot.o2r -> merged mm.o2r) uses libzip directly. libultraship already links
+# libzip PRIVATE, which does not propagate the include path to this target, so link it explicitly
+# here too.
+find_package(libzip REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE libzip::zip)
+
+# Standalone debug CLI sharing O2RMerger.cpp with the in-game extractor flow (no reimplementation).
+# Not built for embedded console targets, matching the ship__Extractor glob's own Switch/CafeOS
+# exclusion above.
+if(NOT CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS")
+    add_executable(merge_o2r_cli
+        2s2h/Extractor/O2RMerger.cpp
+        2s2h/Extractor/tools/merge_o2r_cli.cpp
+    )
+    target_include_directories(merge_o2r_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(merge_o2r_cli PRIVATE libzip::zip)
+    use_props(merge_o2r_cli "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch")

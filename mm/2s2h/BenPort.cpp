@@ -39,6 +39,7 @@
 #endif
 #include "Extractor/Extract.h"
 #include "Extractor/OotExtract.h"
+#include "Extractor/O2RMerger.h"
 // OTRTODO
 // #include <functions.h>
 #include "2s2h/Enhancements/FrameInterpolation/FrameInterpolation.h"
@@ -107,6 +108,7 @@ CrowdControl* CrowdControl::Instance;
 #include "2s2h/resource/importer/SkeletonFactory.h"
 #include "2s2h/resource/importer/SkeletonLimbFactory.h"
 #include "2s2h/resource/importer/TextMMFactory.h"
+#include "2s2h/resource/importer/TextFactory.h"
 #include "2s2h/resource/importer/BackgroundFactory.h"
 #include "2s2h/resource/importer/TextureAnimationFactory.h"
 #include "2s2h/resource/importer/KeyFrameFactory.h"
@@ -590,8 +592,38 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                     }
                     case PS_OOT_DOEXTRACT: {
                         extractionTask = threadPool->submit_task([&]() -> void {
-                            ootExtract.CallZapd(installPath, Ship::Context::GetAppDirectoryPath(appShortName),
-                                                &extractCount, &totalExtract);
+                            std::string exportDir = Ship::Context::GetAppDirectoryPath(appShortName);
+                            ootExtract.CallZapd(installPath, exportDir, &extractCount, &totalExtract);
+
+                            // Merge oot.o2r into mm.o2r right here, while both exist on disk
+                            // simultaneously (mm.o2r was already extracted in an earlier prompt
+                            // step). The merge writes to a sibling temp file and only replaces
+                            // mm.o2r on success, then oot.o2r is deleted so the player only ever
+                            // ends up with a single mm.o2r file - the two-archive intermediate
+                            // state never reaches disk as the final result.
+                            std::string mmPath = exportDir + "/mm.o2r";
+                            std::string ootPath = exportDir + "/oot.o2r";
+                            std::string mergedTmpPath = exportDir + "/mm.o2r.merging.tmp";
+                            if (std::filesystem::exists(mmPath) && std::filesystem::exists(ootPath)) {
+                                std::string mergeError;
+                                if (O2RMerger::MergeOotIntoMm(mmPath, ootPath, mergedTmpPath, &mergeError)) {
+                                    std::error_code ec;
+                                    std::filesystem::rename(mergedTmpPath, mmPath, ec);
+                                    if (ec) {
+                                        SPDLOG_ERROR("O2RMerger: failed to replace mm.o2r with merged "
+                                                     "archive: {}",
+                                                     ec.message());
+                                        std::filesystem::remove(mergedTmpPath);
+                                    } else {
+                                        std::filesystem::remove(ootPath);
+                                    }
+                                } else {
+                                    SPDLOG_ERROR("O2RMerger: merge of oot.o2r into mm.o2r failed: {}. "
+                                                 "Continuing with mm.o2r and oot.o2r unmerged.",
+                                                 mergeError);
+                                }
+                            }
+
                             extractCount = 0;
                             totalExtract = 0;
                             extractDone = true;
@@ -675,20 +707,50 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
 
 void OTRGlobals::Initialize() {
     std::string mmPath = Ship::Context::LocateFileAcrossAppDirs("mm.o2r", appShortName);
+    std::string ootPath = Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName);
+
+    // Migration fallback: installs from before the automatic single-file merge (in
+    // PS_OOT_DOEXTRACT) may still have a separate mm.o2r + oot.o2r pair on disk, which used to
+    // be loaded as two archives. Loading them separately is the root cause of the asset-collision
+    // bug (ArchiveManager overwrites same-path entries with whichever archive is added last, with
+    // no MM-wins precedence). Merge them once here, in place, so old installs self-heal to the
+    // same single merged mm.o2r a fresh extraction now produces, and never load two archives.
+    if (std::filesystem::exists(mmPath) && std::filesystem::exists(ootPath)) {
+        std::string mergedTmpPath = mmPath + ".merging.tmp";
+        std::string mergeError;
+        if (O2RMerger::MergeOotIntoMm(mmPath, ootPath, mergedTmpPath, &mergeError)) {
+            std::error_code ec;
+            std::filesystem::rename(mergedTmpPath, mmPath, ec);
+            if (ec) {
+                SPDLOG_ERROR("O2RMerger: migration merge succeeded but failed to replace mm.o2r: {}",
+                             ec.message());
+                std::filesystem::remove(mergedTmpPath);
+            } else {
+                std::filesystem::remove(ootPath);
+                ootPath.clear();
+            }
+        } else {
+            SPDLOG_ERROR("O2RMerger: migration merge of existing oot.o2r into mm.o2r failed: {}. "
+                         "Falling back to loading both archives separately (pre-merge behavior).",
+                         mergeError);
+        }
+    }
+
     if (std::filesystem::exists(mmPath)) {
         context->GetResourceManager()->GetArchiveManager()->AddArchive(mmPath);
     }
 
-    // Optional: OOT menu-asset archive (pause menu icons/maps only). Not required to boot; the pause
-    // menu falls back to its existing placeholder behavior when this is absent.
-    std::string ootPath = Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName);
-    if (std::filesystem::exists(ootPath)) {
+    // Only reached for installs where the migration merge above was skipped (no oot.o2r present)
+    // or failed (ootPath left intact as a fallback). A successful merge clears ootPath and
+    // deletes the file, so this won't double-load a merged archive's content.
+    if (!ootPath.empty() && std::filesystem::exists(ootPath)) {
         context->GetResourceManager()->GetArchiveManager()->AddArchive(ootPath);
     }
 
-    // OOT_NTSC_US_10 must be allowed here too, since a valid oot.o2r (added just above
-    // via AddArchive(ootPath)) reports that hash as its game version, and every loaded
-    // archive's version is checked against this set below.
+    // OOT_NTSC_US_10 must be allowed here too: a fallback-loaded oot.o2r (added just above via
+    // AddArchive(ootPath), only reachable when the migration merge was skipped or failed) reports
+    // that hash as its game version, and every loaded archive's version is checked against this
+    // set below.
     std::unordered_set<uint32_t> validHashes = { MM_NTSC_US_10, MM_NTSC_US_GC, OOT_NTSC_US_10 };
 
 #if (_DEBUG)
@@ -765,6 +827,16 @@ void OTRGlobals::Initialize() {
                                     "Cutscene", static_cast<uint32_t>(SOH::ResourceType::SOH_Cutscene), 0);
     loader->RegisterResourceFactory(std::make_shared<SOH::ResourceFactoryBinaryTextMMV0>(), RESOURCE_FORMAT_BINARY,
                                     "TextMM", static_cast<uint32_t>(SOH::ResourceType::TSH_TextMM), 0);
+
+    // Defensive hardening: register the generic "Text"/OTXT factory too, even though MM's own
+    // TextMM (OTXM) always wins at colliding paths after the archive-merge fix below. Without
+    // this, any OOT-sourced Text resource that legitimately loads (e.g. via a future ootv_-
+    // prefixed path) would fail with "no import factory for resource of type OTXT" instead of
+    // loading correctly.
+    loader->RegisterResourceFactory(std::make_shared<SOH::ResourceFactoryBinaryTextV0>(), RESOURCE_FORMAT_BINARY,
+                                    "Text", static_cast<uint32_t>(SOH::ResourceType::SOH_Text), 0);
+    loader->RegisterResourceFactory(std::make_shared<SOH::ResourceFactoryXMLTextV0>(), RESOURCE_FORMAT_XML, "Text",
+                                    static_cast<uint32_t>(SOH::ResourceType::SOH_Text), 0);
 
     loader->RegisterResourceFactory(std::make_shared<SOH::ResourceFactoryBinaryAudioSampleV2>(), RESOURCE_FORMAT_BINARY,
                                     "AudioSample", static_cast<uint32_t>(SOH::ResourceType::SOH_AudioSample), 2);
