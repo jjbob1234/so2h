@@ -56,6 +56,22 @@ std::string BasenameOf(const std::string& path) {
 // animation/skeleton data, etc.) as opposed to gameplay-affecting text/scene/code-adjacent
 // resources. Per the user's rule: resource/non-code files always get merged in (ootr_),
 // never silently dropped on collision.
+//
+// IMPORTANT: several MM subsystems enumerate an entire top-level folder via
+// ResourceMgr_ListFiles()/LoadDirectory() and index the results by an ID embedded in the file
+// content, not by filename (e.g. AudioLoad_Init's ResourceMgr_ListFiles("audio/sequences*") /
+// ("audio/fonts*"), which writes into gSequenceMap[seqNumber] and the fixed-size
+// seqCachePolicyMap[MAX_AUTHENTIC_SEQID] using a seqNumber/fntIndex read straight out of the
+// resource file). MM and OOT independently reuse the same small ID ranges for their own audio
+// tables, so leaving an OOT file inside the same top-level folder (even under a renamed
+// basename) lets it silently collide with and overwrite a real MM slot at load time -- this is
+// exactly what caused the AudioPlayback_NoteInitForLayer crash on every scene transition.
+// Fix: OOT resource-noncode content is placed under an "ootr_"-prefixed TOP FOLDER (see
+// WithPrefixedTopFolder), not just a prefixed basename, so it never lands inside a folder MM's
+// existing glob/index-by-embedded-ID loaders scan. This also keeps the door open for future
+// two-way world-crossover work (a world-aware resolver can explicitly scan "ootr_audio/*" etc.
+// and, symmetrically, a future oot.o2r merge could isolate MM content under "mmr_<folder>/")
+// without any rework of this isolation.
 const char* const kResourceNonCodeFolders[] = { "objects", "textures", "audio", "background",
                                                  "backgrounds", "skeletons", "animations",
                                                  "materials", "matrices" };
@@ -82,6 +98,18 @@ std::string WithPrefixedBasename(const std::string& path, const std::string& pre
         return prefix + base;
     }
     return dir + "/" + prefix + base;
+}
+
+// Prefixes the FIRST path component (the top-level folder), not the basename, e.g.
+// "audio/sequences/Foo" -> "ootr_audio/sequences/Foo". Used for resource-noncode content so it
+// never lands inside a top-level folder MM's own code enumerates via a directory glob (see the
+// kResourceNonCodeFolders comment for why that matters).
+std::string WithPrefixedTopFolder(const std::string& path, const std::string& prefix) {
+    auto pos = path.find('/');
+    if (pos == std::string::npos) {
+        return prefix + path;
+    }
+    return prefix + path.substr(0, pos) + path.substr(pos);
 }
 
 std::string MakeTempSiblingPath(const std::string& finalPath) {
@@ -245,9 +273,12 @@ bool MergeOotIntoMm(const std::string& mmPath, const std::string& ootPath, const
         if (IsResourceNonCode(name)) {
             // Resource/non-code asset (models, textures, audio, animation data, ...): always
             // merged in. MM's own copy is never touched/replaced (it's untouched in the
-            // base-copied archive); the OOT copy is added alongside it under "ootr_", whether
-            // or not a same-named MM file exists.
-            std::string destName = WithPrefixedBasename(name, "ootr_");
+            // base-copied archive). The OOT copy is added under an "ootr_"-prefixed TOP FOLDER
+            // (not just a prefixed basename) so it lands outside any top-level folder MM's own
+            // code enumerates via a directory glob and indexes by an embedded file ID -- see
+            // the kResourceNonCodeFolders comment above for why a basename-only prefix caused
+            // real MM audio slots to get silently overwritten.
+            std::string destName = WithPrefixedTopFolder(name, "ootr_");
             ok = CopyEntry(ootZip, static_cast<zip_uint64_t>(i), mergedZip, destName, &err);
             continue;
         }
