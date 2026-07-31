@@ -19,7 +19,10 @@ namespace O2RMerger {
 // is no OOT item content available to display via pause-menu icons, so nothing needs an
 // "ootv_" variant yet. Left as a real, working table (not a stub) so a future consumer can
 // add a basename here with zero merge-logic changes.
-const char* const kOotvEscapeHatchBasenames[] = {};
+// A single nullptr placeholder keeps this a valid array on MSVC (which, unlike GCC/Clang,
+// rejects zero-size arrays with C2466); kOotvEscapeHatchBasenamesCount stays 0 so the
+// placeholder is never iterated over or dereferenced.
+const char* const kOotvEscapeHatchBasenames[] = { nullptr };
 const size_t kOotvEscapeHatchBasenamesCount = 0;
 
 bool IsOotvEscapeHatchBasename(const std::string& basename) {
