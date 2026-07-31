@@ -131,25 +131,28 @@ void ValidateOotIconAssetsFor100PercentSave() {
         return;
     }
 
+    // Sample of real per-texture OOT relative paths (not folder-level guesses) now that
+    // OotItemIcons.cpp is a real consumer - one icon, one item name, one equipment icon.
     static const char* const kPauseMenuIconOriginalPaths[] = {
-        "textures/icon_item_static/icon_item_static",
-        "textures/map_48x85_static/map_48x85_static",
-        "textures/map_name_static/map_name_static",
-        "textures/parameter_static/parameter_static",
-        "textures/item_name_static/item_name_static",
+        "textures/icon_item_static/gItemIconDekuStickTex",
+        "textures/item_name_static/gDekuStickItemNameENGTex",
+        "textures/icon_item_static/gItemIconSwordKokiriTex",
     };
 
     auto archiveManager = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
     for (const char* originalPath : kPauseMenuIconOriginalPaths) {
-        std::string ootrPath = OotAssets::GetOotIconVariant(originalPath);
-        if (archiveManager == nullptr || !archiveManager->HasFile(ootrPath)) {
+        // ResolveOotPath() returns a TexturePtr-style "__OTR__..." string; ArchiveManager::HasFile
+        // expects a raw zip entry name (no "__OTR__" scheme prefix), so strip it back off here.
+        std::string texturePtrPath = OotAssets::ResolveOotPath(originalPath);
+        std::string entryName = texturePtrPath.substr(7); // 7 == length of the "__OTR__" scheme prefix
+        if (archiveManager == nullptr || !archiveManager->HasFile(entryName)) {
             SPDLOG_WARN("DeveloperTools: 100% debug save - expected merged OOT pause-menu icon "
                         "asset missing: {}",
-                        ootrPath);
+                        entryName);
         } else {
             SPDLOG_INFO("DeveloperTools: 100% debug save - merged OOT pause-menu icon asset "
                         "present: {}",
-                        ootrPath);
+                        entryName);
         }
     }
 }

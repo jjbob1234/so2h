@@ -401,6 +401,11 @@ void KaleidoScope_DrawItemSelectOot(PlayState* play);
 void KaleidoScope_UpdateItemCursorOot(PlayState* play);
 void KaleidoScope_DrawEquipmentOot(PlayState* play);
 void KaleidoScope_UpdateEquipCursorOot(PlayState* play);
+// Called from KaleidoScope_UpdateNamePanel (z_kaleido_scope_NES.c) for PAUSE_ITEM_OOT /
+// PAUSE_EQUIP_OOT, mirroring how it already calls Kaleido_LoadItemNameStatic/
+// Kaleido_LoadMapNameStatic for MM's own pages.
+void Kaleido_LoadItemNameStaticOot(void** segment, u32 itemId);
+void Kaleido_LoadEquipNameStaticOot(void** segment, u32 encoded);
 // #endregion
 
 // Prompt

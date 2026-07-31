@@ -1707,6 +1707,12 @@ void KaleidoScope_UpdateNamePanel(PlayState* play) {
         if (pauseCtx->namedItem != PAUSE_ITEM_NONE) {
             if ((pauseCtx->pageIndex == PAUSE_MAP) && !sInDungeonScene) {
                 Kaleido_LoadMapNameStatic(&pauseCtx->nameSegment, namedItem);
+            } else if (pauseCtx->pageIndex == PAUSE_ITEM_OOT) {
+                // SO2H [Menu]: real OOT item name text, see kaleido_compat_menu.c.
+                Kaleido_LoadItemNameStaticOot(&pauseCtx->nameSegment, namedItem);
+            } else if (pauseCtx->pageIndex == PAUSE_EQUIP_OOT) {
+                // SO2H [Menu]: real OOT equipment name text, see kaleido_compat_menu.c.
+                Kaleido_LoadEquipNameStaticOot(&pauseCtx->nameSegment, namedItem);
             } else {
                 Kaleido_LoadItemNameStatic(&pauseCtx->nameSegment, namedItem);
             }
