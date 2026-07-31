@@ -558,7 +558,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     find_package(Opus CONFIG REQUIRED)
     link_libraries(Opus::opus)
 	find_package(OpusFile CONFIG REQUIRED)
-    link_libraries(OpusFile::opusfile CONFIG REQUIRED)
+    link_libraries(OpusFile::opusfile)
 
 	set(ADDITIONAL_LIBRARY_DEPENDENCIES
 		"libultraship;"
