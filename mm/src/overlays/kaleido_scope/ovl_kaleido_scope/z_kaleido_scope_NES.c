@@ -805,16 +805,9 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_ITEM);
         }
 
-        // SO2H NEW: OOT Item page background predraw (hexagon face index 1, -60deg).
-        // Guarded on itemOotPageVtx being allocated - real content/allocation lands in
-        // patch 0004. SO2H PLACEHOLDER (user request: show a blank MM screen on the
-        // unrendered OOT faces instead of nothing, so all 6 hex faces are visible for
-        // review): when itemOotPageVtx isn't allocated yet, fall back to drawing the
-        // always-allocated vanilla maskPageVtx/sMaskPageBgTextures at this face's own
-        // hex slot/rotation - just an empty MM-style page background, no item content
-        // (KaleidoScope_DrawItemSelectOot is skipped since it needs the real OOT vtx
-        // buffer this face doesn't have yet). Remove this fallback once patch 0004
-        // lands and itemOotPageVtx is always allocated.
+        // SO2H [Menu] patch 0004: OOT Item page background predraw (hexagon face index
+        // 1, -60deg). itemOotPageVtx is always allocated (KaleidoScope_SetVertices), so
+        // this always draws real item-grid content, not a blank MM placeholder.
         if ((pauseCtx->pageIndex != PAUSE_ITEM_OOT) && (pauseCtx->pageIndex != PAUSE_MASK)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
@@ -830,17 +823,14 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-            if (pauseCtx->itemOotPageVtx != NULL) {
-                POLY_OPA_DISP =
-                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx, sItemPageBgTextures);
+            // SO2H [Menu] patch 0004: itemOotPageVtx is now always allocated (see
+            // KaleidoScope_SetVertices), so this always draws real content.
+            POLY_OPA_DISP =
+                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx, sItemPageBgTextures);
 
-                GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
-                KaleidoScope_DrawItemSelectOot(play);
-                GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
-            } else {
-                POLY_OPA_DISP =
-                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
-            }
+            GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
+            KaleidoScope_DrawItemSelectOot(play);
+            GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_ITEM_OOT);
         }
 
         if ((pauseCtx->pageIndex != PAUSE_MAP) && (pauseCtx->pageIndex != PAUSE_EQUIP_OOT)) {
@@ -920,13 +910,11 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_MASK);
         }
 
-        // SO2H NEW: OOT Equip page background predraw (hexagon face index 5, -300deg).
-        // Guarded on equipOotPageVtx being allocated - real content/allocation lands in
-        // patch 0005 (Link doll framebuffer). SO2H PLACEHOLDER (same as the ITEM_OOT
-        // predraw above): fall back to the always-allocated maskPageVtx/
-        // sMaskPageBgTextures blank MM background at this face's slot when
-        // equipOotPageVtx isn't ready yet, so the face isn't empty. Remove once patch
-        // 0005 lands.
+        // SO2H [Menu] patch 0005: OOT Equip page background predraw (hexagon face
+        // index 5, -300deg). equipOotPageVtx is always allocated (KaleidoScope_SetVertices),
+        // so this always draws real equipment-grid content, not a blank MM placeholder.
+        // No Link-doll framebuffer this pass (out of scope, see PauseContext.playerSegment
+        // TODO in z64pause_menu.h).
         if ((pauseCtx->pageIndex != PAUSE_EQUIP_OOT) && (pauseCtx->pageIndex != PAUSE_MAP)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
@@ -944,17 +932,14 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-            if (pauseCtx->equipOotPageVtx != NULL) {
-                POLY_OPA_DISP =
-                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx, sMaskPageBgTextures);
+            // SO2H [Menu] patch 0005: equipOotPageVtx is now always allocated (see
+            // KaleidoScope_SetVertices), so this always draws real content.
+            POLY_OPA_DISP =
+                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx, sMaskPageBgTextures);
 
-                GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
-                KaleidoScope_DrawEquipmentOot(play);
-                GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
-            } else {
-                POLY_OPA_DISP =
-                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
-            }
+            GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
+            KaleidoScope_DrawEquipmentOot(play);
+            GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, PAUSE_EQUIP_OOT);
         }
 
         // #endregion
@@ -987,11 +972,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             // SO2H NEW: OOT Item page (hexagon face index 1)
             case PAUSE_ITEM_OOT:
-                // Guarded on itemOotPageVtx being allocated (see patch 0004, not yet
-                // done). SO2H PLACEHOLDER: still draw the blank MM background/frame at
-                // this face's slot when focused, even without real content, so the page
-                // isn't a void when cycled to directly (see predraw block above for the
-                // matching non-focused fallback).
+                // itemOotPageVtx is always allocated (KaleidoScope_SetVertices), so
+                // this always draws real item-grid content when this page is focused.
                 {
                     gDPPipeSync(POLY_OPA_DISP++);
 
@@ -1007,17 +989,13 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-                    if (pauseCtx->itemOotPageVtx != NULL) {
-                        POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx,
-                                                                       sItemPageBgTextures);
+                    // SO2H [Menu] patch 0004: itemOotPageVtx is now always allocated.
+                    POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemOotPageVtx,
+                                                                   sItemPageBgTextures);
 
-                        GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
-                        KaleidoScope_DrawItemSelectOot(play);
-                        GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
-                    } else {
-                        POLY_OPA_DISP =
-                            KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
-                    }
+                    GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                    KaleidoScope_DrawItemSelectOot(play);
+                    GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
                 }
                 break;
 
@@ -1148,10 +1126,8 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
             // SO2H NEW: OOT Equip page (hexagon face index 5)
             case PAUSE_EQUIP_OOT:
-                // Guarded on equipOotPageVtx being allocated (see patch 0005, not yet
-                // done). SO2H PLACEHOLDER: same reasoning as PAUSE_ITEM_OOT above - draw
-                // the blank MM background/frame at this face's slot when focused so it
-                // isn't a void, until patch 0005 lands.
+                // equipOotPageVtx is always allocated (KaleidoScope_SetVertices), so
+                // this always draws real equipment-grid content when this page is focused.
                 {
                     gDPPipeSync(POLY_OPA_DISP++);
 
@@ -1167,17 +1143,13 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
 
-                    if (pauseCtx->equipOotPageVtx != NULL) {
-                        POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx,
-                                                                       sMaskPageBgTextures);
+                    // SO2H [Menu] patch 0005: equipOotPageVtx is now always allocated.
+                    POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipOotPageVtx,
+                                                                   sMaskPageBgTextures);
 
-                        GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
-                        KaleidoScope_DrawEquipmentOot(play);
-                        GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
-                    } else {
-                        POLY_OPA_DISP =
-                            KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->maskPageVtx, sMaskPageBgTextures);
-                    }
+                    GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
+                    KaleidoScope_DrawEquipmentOot(play);
+                    GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
                 }
                 break;
         }
@@ -2986,6 +2958,112 @@ void KaleidoScope_SetVertices(PlayState* play, GraphicsContext* gfxCtx) {
         }
         // #endregion
     }
+
+    // #region SO2H [Menu] patch 0004 - PAUSE_ITEM_OOT real grid vertices, mirroring the
+    // itemPageVtx/itemVtx pattern above 1:1 (same ITEM_GRID_ROWS/COLS geometry). Content
+    // (which OOT item icon goes in each cell) is filled per-frame in
+    // KaleidoScope_DrawItemSelectOot from gSaveContext...so2h.oot.inventory.items, not
+    // here - this only lays out the quad positions/UVs once.
+    if (pauseCtx->pageIndex != PAUSE_ITEM_OOT) {
+        pauseCtx->itemOotPageVtx = GRAPH_ALLOC(gfxCtx, ((PAGE_BG_QUADS + QUAD_ITEM_OOT_MAX) * 4) * sizeof(Vtx));
+        KaleidoScope_SetPageVertices(play, pauseCtx->itemOotPageVtx, VTX_PAGE_ITEM, QUAD_ITEM_OOT_MAX);
+
+        pauseCtx->itemOotVtx = GRAPH_ALLOC(gfxCtx, (QUAD_ITEM_OOT_MAX * 4) * sizeof(Vtx));
+
+        // QUAD_ITEM_OOT_GRID_FIRST..QUAD_ITEM_OOT_GRID_LAST
+        for (k = 0, i = 0, vtx_y = (ITEM_GRID_ROWS * ITEM_GRID_CELL_HEIGHT) / 2 - 6; k < ITEM_GRID_ROWS;
+             k++, vtx_y -= ITEM_GRID_CELL_HEIGHT) {
+            for (vtx_x = 0 - (ITEM_GRID_COLS * ITEM_GRID_CELL_WIDTH) / 2, j = 0; j < ITEM_GRID_COLS;
+                 j++, i += 4, vtx_x += ITEM_GRID_CELL_WIDTH) {
+                pauseCtx->itemOotVtx[i + 0].v.ob[0] = pauseCtx->itemOotVtx[i + 2].v.ob[0] =
+                    vtx_x + ITEM_GRID_QUAD_MARGIN;
+                pauseCtx->itemOotVtx[i + 1].v.ob[0] = pauseCtx->itemOotVtx[i + 3].v.ob[0] =
+                    pauseCtx->itemOotVtx[i + 0].v.ob[0] + ITEM_GRID_QUAD_WIDTH;
+
+                pauseCtx->itemOotVtx[i + 0].v.ob[1] = pauseCtx->itemOotVtx[i + 1].v.ob[1] =
+                    vtx_y + pauseCtx->offsetY - ITEM_GRID_QUAD_MARGIN;
+                pauseCtx->itemOotVtx[i + 2].v.ob[1] = pauseCtx->itemOotVtx[i + 3].v.ob[1] =
+                    pauseCtx->itemOotVtx[i + 0].v.ob[1] - ITEM_GRID_QUAD_WIDTH;
+
+                pauseCtx->itemOotVtx[i + 0].v.ob[2] = pauseCtx->itemOotVtx[i + 1].v.ob[2] =
+                    pauseCtx->itemOotVtx[i + 2].v.ob[2] = pauseCtx->itemOotVtx[i + 3].v.ob[2] = 0;
+
+                pauseCtx->itemOotVtx[i + 0].v.flag = pauseCtx->itemOotVtx[i + 1].v.flag =
+                    pauseCtx->itemOotVtx[i + 2].v.flag = pauseCtx->itemOotVtx[i + 3].v.flag = 0;
+
+                pauseCtx->itemOotVtx[i + 0].v.tc[0] = pauseCtx->itemOotVtx[i + 0].v.tc[1] =
+                    pauseCtx->itemOotVtx[i + 1].v.tc[1] = pauseCtx->itemOotVtx[i + 2].v.tc[0] = 0;
+
+                pauseCtx->itemOotVtx[i + 1].v.tc[0] = pauseCtx->itemOotVtx[i + 2].v.tc[1] =
+                    pauseCtx->itemOotVtx[i + 3].v.tc[0] = pauseCtx->itemOotVtx[i + 3].v.tc[1] =
+                        ITEM_GRID_QUAD_TEX_SIZE * (1 << 5);
+
+                pauseCtx->itemOotVtx[i + 0].v.cn[0] = pauseCtx->itemOotVtx[i + 1].v.cn[0] =
+                    pauseCtx->itemOotVtx[i + 2].v.cn[0] = pauseCtx->itemOotVtx[i + 3].v.cn[0] =
+                        pauseCtx->itemOotVtx[i + 0].v.cn[1] = pauseCtx->itemOotVtx[i + 1].v.cn[1] =
+                            pauseCtx->itemOotVtx[i + 2].v.cn[1] = pauseCtx->itemOotVtx[i + 3].v.cn[1] =
+                                pauseCtx->itemOotVtx[i + 0].v.cn[2] = pauseCtx->itemOotVtx[i + 1].v.cn[2] =
+                                    pauseCtx->itemOotVtx[i + 2].v.cn[2] = pauseCtx->itemOotVtx[i + 3].v.cn[2] = 255;
+
+                pauseCtx->itemOotVtx[i + 0].v.cn[3] = pauseCtx->itemOotVtx[i + 1].v.cn[3] =
+                    pauseCtx->itemOotVtx[i + 2].v.cn[3] = pauseCtx->itemOotVtx[i + 3].v.cn[3] = 255;
+            }
+        }
+    }
+
+    // SO2H [Menu] patch 0005 - PAUSE_EQUIP_OOT real grid vertices, mirroring the same
+    // per-cell layout pattern as the item grids above but using EQUIP_OOT_GRID_ROWS/COLS
+    // (4x4 - one row per EquipmentType, one column per owned EquipInv* tier). Content
+    // filled per-frame in KaleidoScope_DrawEquipmentOot from
+    // gSaveContext...so2h.oot.inventory.equipment / .equips.equipment. No Link-doll quads
+    // (out of scope this pass, see PauseContext.playerSegment TODO in z64pause_menu.h).
+    if (pauseCtx->pageIndex != PAUSE_EQUIP_OOT) {
+        pauseCtx->equipOotPageVtx = GRAPH_ALLOC(gfxCtx, ((PAGE_BG_QUADS + QUAD_EQUIP_OOT_MAX) * 4) * sizeof(Vtx));
+        KaleidoScope_SetPageVertices(play, pauseCtx->equipOotPageVtx, VTX_PAGE_MASK, QUAD_EQUIP_OOT_MAX);
+
+        pauseCtx->equipOotVtx = GRAPH_ALLOC(gfxCtx, (QUAD_EQUIP_OOT_MAX * 4) * sizeof(Vtx));
+
+        // QUAD_EQUIP_OOT_GRID_FIRST..QUAD_EQUIP_OOT_GRID_LAST
+        for (k = 0, i = 0, vtx_y = (EQUIP_OOT_GRID_ROWS * EQUIP_OOT_GRID_CELL_HEIGHT) / 2 - 6; k < EQUIP_OOT_GRID_ROWS;
+             k++, vtx_y -= EQUIP_OOT_GRID_CELL_HEIGHT) {
+            for (vtx_x = 0 - (EQUIP_OOT_GRID_COLS * EQUIP_OOT_GRID_CELL_WIDTH) / 2, j = 0; j < EQUIP_OOT_GRID_COLS;
+                 j++, i += 4, vtx_x += EQUIP_OOT_GRID_CELL_WIDTH) {
+                pauseCtx->equipOotVtx[i + 0].v.ob[0] = pauseCtx->equipOotVtx[i + 2].v.ob[0] =
+                    vtx_x + EQUIP_OOT_GRID_QUAD_MARGIN;
+                pauseCtx->equipOotVtx[i + 1].v.ob[0] = pauseCtx->equipOotVtx[i + 3].v.ob[0] =
+                    pauseCtx->equipOotVtx[i + 0].v.ob[0] + EQUIP_OOT_GRID_QUAD_WIDTH;
+
+                pauseCtx->equipOotVtx[i + 0].v.ob[1] = pauseCtx->equipOotVtx[i + 1].v.ob[1] =
+                    vtx_y + pauseCtx->offsetY - EQUIP_OOT_GRID_QUAD_MARGIN;
+                pauseCtx->equipOotVtx[i + 2].v.ob[1] = pauseCtx->equipOotVtx[i + 3].v.ob[1] =
+                    pauseCtx->equipOotVtx[i + 0].v.ob[1] - EQUIP_OOT_GRID_QUAD_HEIGHT;
+
+                pauseCtx->equipOotVtx[i + 0].v.ob[2] = pauseCtx->equipOotVtx[i + 1].v.ob[2] =
+                    pauseCtx->equipOotVtx[i + 2].v.ob[2] = pauseCtx->equipOotVtx[i + 3].v.ob[2] = 0;
+
+                pauseCtx->equipOotVtx[i + 0].v.flag = pauseCtx->equipOotVtx[i + 1].v.flag =
+                    pauseCtx->equipOotVtx[i + 2].v.flag = pauseCtx->equipOotVtx[i + 3].v.flag = 0;
+
+                pauseCtx->equipOotVtx[i + 0].v.tc[0] = pauseCtx->equipOotVtx[i + 0].v.tc[1] =
+                    pauseCtx->equipOotVtx[i + 1].v.tc[1] = pauseCtx->equipOotVtx[i + 2].v.tc[0] = 0;
+
+                pauseCtx->equipOotVtx[i + 1].v.tc[0] = pauseCtx->equipOotVtx[i + 2].v.tc[1] =
+                    pauseCtx->equipOotVtx[i + 3].v.tc[0] = pauseCtx->equipOotVtx[i + 3].v.tc[1] =
+                        EQUIP_OOT_GRID_QUAD_TEX_SIZE * (1 << 5);
+
+                pauseCtx->equipOotVtx[i + 0].v.cn[0] = pauseCtx->equipOotVtx[i + 1].v.cn[0] =
+                    pauseCtx->equipOotVtx[i + 2].v.cn[0] = pauseCtx->equipOotVtx[i + 3].v.cn[0] =
+                        pauseCtx->equipOotVtx[i + 0].v.cn[1] = pauseCtx->equipOotVtx[i + 1].v.cn[1] =
+                            pauseCtx->equipOotVtx[i + 2].v.cn[1] = pauseCtx->equipOotVtx[i + 3].v.cn[1] =
+                                pauseCtx->equipOotVtx[i + 0].v.cn[2] = pauseCtx->equipOotVtx[i + 1].v.cn[2] =
+                                    pauseCtx->equipOotVtx[i + 2].v.cn[2] = pauseCtx->equipOotVtx[i + 3].v.cn[2] = 255;
+
+                pauseCtx->equipOotVtx[i + 0].v.cn[3] = pauseCtx->equipOotVtx[i + 1].v.cn[3] =
+                    pauseCtx->equipOotVtx[i + 2].v.cn[3] = pauseCtx->equipOotVtx[i + 3].v.cn[3] = 255;
+            }
+        }
+    }
+    // #endregion
 
     pauseCtx->cursorVtx = GRAPH_ALLOC(play->state.gfxCtx, (PAUSE_QUAD_CURSOR_MAX * 4) * sizeof(Vtx));
 

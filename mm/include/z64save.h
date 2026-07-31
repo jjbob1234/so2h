@@ -408,12 +408,46 @@ typedef enum SceneOrigin {
 // future so2h save additions (e.g. rule 12's full OOT item/equipment save slots, once
 // that patch is scoped) have one clearly-labeled place to grow, instead of being mixed
 // into 2s2h's own ShipSaveInfo fields.
+// SO2H [Save] patch 0004/0005 - full OOT key item/equipment save data, backing the
+// OOT Item/Equip pause pages (PAUSE_ITEM_OOT/PAUSE_EQUIP_OOT). Field layout mirrors
+// reference/soh's `ItemEquips`/`Inventory` (OOT's own save shapes) 1:1 so item/slot
+// indices line up with SoH-derived icon/behavior tables ported into
+// mm/2s2h/Compat/Menu/kaleido_compat_menu.c. Appended at the tail of `So2hSaveInfo`,
+// same append-only convention as `rando` above - never insert fields above this
+// struct or reorder its members; only ever add new fields after `magic`/`version`
+// below. Explicitly excludes any separate OOT health/magic upgrade fields (unified
+// health/magic system is a future, out-of-scope patch).
+#define OOT_SAVE_INFO_MAGIC 0x4F4F5453 // "OOTS"
+#define OOT_SAVE_INFO_VERSION 1
+
+typedef struct OotItemEquips {
+    /* 0x00 */ u8 buttonItems[4];  // OOT B/C-Left/C-Down/C-Right slot -> OOT item id, mirrors soh ItemEquips.buttonItems
+    /* 0x04 */ u8 cButtonSlots[3]; // Which OOT inventory slot each C button points to, mirrors soh ItemEquips.cButtonSlots
+    /* 0x08 */ u16 equipment;      // nibble-packed EquipValue* per EquipmentType, mirrors soh ItemEquips.equipment
+} OotItemEquips; // size = 0x0A
+
+typedef struct OotInventory {
+    /* 0x00 */ u8 items[24];        // OOT item grid slots (ITEM_GRID_ROWS * ITEM_GRID_COLS), mirrors soh Inventory.items
+    /* 0x18 */ s8 ammo[16];         // per-consumable ammo counts, mirrors soh Inventory.ammo
+    /* 0x28 */ u16 equipment;       // nibble-packed owned-equipment mask (EquipInv*), mirrors soh Inventory.equipment
+    /* 0x2C */ u32 upgrades;        // capacity upgrades (quiver, bomb bag, strength, scale, wallet, etc), mirrors soh Inventory.upgrades
+    /* 0x30 */ u32 questItems;      // medallions/songs/quest item flags, mirrors soh Inventory.questItems
+    /* 0x34 */ u8 dungeonItems[20]; // boss key/compass/map flags per OOT dungeon, mirrors soh Inventory.dungeonItems
+    /* 0x48 */ s8 dungeonKeys[19];  // small key counts per OOT dungeon, mirrors soh Inventory.dungeonKeys
+    /* 0x5B */ s8 defenseHearts;    // mirrors soh Inventory.defenseHearts
+    /* 0x5C */ s16 gsTokens;        // Gold Skulltula token count, mirrors soh Inventory.gsTokens
+} OotInventory; // size = 0x60 (compiler-padded; soh's raw N64 layout is 0x5E, this PC-only struct doesn't need byte-exact packing)
+
+typedef struct OotSaveInfo {
+    /* 0x00 */ u32 magic;   // must equal OOT_SAVE_INFO_MAGIC; guards against reading uninitialized/pre-patch save data
+    /* 0x04 */ u16 version; // must equal OOT_SAVE_INFO_VERSION at time of writing; bump alongside tools/check_save_field_offsets.py when the layout changes
+    /* 0x06 */ OotItemEquips equips;
+    /* 0x10 */ OotInventory inventory;
+} OotSaveInfo; // size = 0x70 (compiler-padded, see OotInventory)
+
 typedef struct So2hSaveInfo {
     SceneOrigin currentWorld;
-    // SO2H TODO (blocking follow-up, STRICTRULES.md rule 12/22): full OOT key item/
-    // equipment save slots (swords, shields, bow, hookshot, bottles, quest items,
-    // upgrades) are NOT allocated yet. This is a separate, larger patch than 0003 -
-    // recorded here as a named blocking dependency rather than faked around.
+    OotSaveInfo oot;
 } So2hSaveInfo;
 // #endregion
 

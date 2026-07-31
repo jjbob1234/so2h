@@ -147,6 +147,59 @@ typedef enum MaskQuad {
     /* 27 */ QUAD_MASK_MAX
 } MaskQuad;
 
+// === ITEM OOT === //
+// SO2H [Menu] patch 0004 - scaffolding for PAUSE_ITEM_OOT. Reuses the exact same
+// ITEM_GRID_ROWS/COLS geometry as MM's own item grid above, since OOT's own inventory
+// is also a 24-slot (4x6) grid (reference/soh's `Inventory.items[24]`) - see
+// OotSaveInfo.inventory.items in z64save.h. No selected-C-button markers yet (parity
+// with MM's item page markers is a later polish pass, not required for scaffolding).
+
+typedef enum ItemOotPageQuad {
+    // 0..14 are the 15 background textures
+    /*  0 */ QUAD_ITEM_OOT_PAGE_BG_FIRST,
+    /* 14 */ QUAD_ITEM_OOT_PAGE_BG_LAST = PAGE_BG_QUADS - 1,
+    /* 15 */ QUAD_ITEM_OOT_PAGE_MAX
+} ItemOotPageQuad;
+
+typedef enum ItemOotQuad {
+    // 0..23 are the ITEM_GRID_ROWS*ITEM_GRID_COLS OOT item grid
+    // The values follow `OotSaveInfo.inventory.items[]` slot index
+    /*  0 */ QUAD_ITEM_OOT_GRID_FIRST,
+    /* 23 */ QUAD_ITEM_OOT_GRID_LAST = ITEM_GRID_ROWS * ITEM_GRID_COLS - 1,
+    /* 24 */ QUAD_ITEM_OOT_MAX
+} ItemOotQuad;
+
+// === EQUIP OOT === //
+// SO2H [Menu] patch 0005 - scaffolding for PAUSE_EQUIP_OOT. A 4x4 grid: one row per
+// `EquipmentType` (sword/shield/tunic/boots), one column per owned upgrade tier
+// (`EquipInv*`), read from OotSaveInfo.inventory.equipment (owned mask) /
+// OotSaveInfo.equips.equipment (currently equipped). Intentionally does NOT include a
+// Link-doll render this pass (see PauseContext.playerSegment/playerSkelAnime TODO).
+
+#define EQUIP_OOT_GRID_ROWS 4
+#define EQUIP_OOT_GRID_COLS 4
+#define EQUIP_OOT_GRID_CELL_WIDTH 32
+#define EQUIP_OOT_GRID_CELL_HEIGHT 32
+#define EQUIP_OOT_GRID_QUAD_MARGIN 2
+#define EQUIP_OOT_GRID_QUAD_WIDTH (EQUIP_OOT_GRID_CELL_WIDTH - (2 * EQUIP_OOT_GRID_QUAD_MARGIN))
+#define EQUIP_OOT_GRID_QUAD_HEIGHT (EQUIP_OOT_GRID_CELL_HEIGHT - (2 * EQUIP_OOT_GRID_QUAD_MARGIN))
+#define EQUIP_OOT_GRID_QUAD_TEX_SIZE 32 // both width and height
+#define EQUIP_OOT_NUM_SLOTS (EQUIP_OOT_GRID_ROWS * EQUIP_OOT_GRID_COLS)
+
+typedef enum EquipOotPageQuad {
+    // 0..14 are the 15 background textures
+    /*  0 */ QUAD_EQUIP_OOT_PAGE_BG_FIRST,
+    /* 14 */ QUAD_EQUIP_OOT_PAGE_BG_LAST = PAGE_BG_QUADS - 1,
+    /* 15 */ QUAD_EQUIP_OOT_PAGE_MAX
+} EquipOotPageQuad;
+
+typedef enum EquipOotQuad {
+    // 0..15 are the EQUIP_OOT_GRID_ROWS*EQUIP_OOT_GRID_COLS equipment grid
+    /*  0 */ QUAD_EQUIP_OOT_GRID_FIRST,
+    /* 15 */ QUAD_EQUIP_OOT_GRID_LAST = EQUIP_OOT_NUM_SLOTS - 1,
+    /* 16 */ QUAD_EQUIP_OOT_MAX
+} EquipOotQuad;
+
 // === QUEST === //
 
 typedef enum QuestPageQuad {

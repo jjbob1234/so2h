@@ -7,6 +7,7 @@
 
 #include "2s2h/Enhancements/Saving/SavingEnhancements.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#include "2s2h/Compat/Save/oot_save_info.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 void Sram_SyncWriteToFlash(SramContext* sramCtx, s32 curPage, s32 numPages);
@@ -1020,6 +1021,8 @@ void Sram_InitNewSave(void) {
     gSaveContext.save.shipSaveInfo.fileCompletedAt = 0;
     gSaveContext.save.shipSaveInfo.filePlaytime = 0;
     gSaveContext.shipSaveContext.lastTimeLog = 0;
+    gSaveContext.save.shipSaveInfo.so2h.currentWorld = SCENE_ORIGIN_MM;
+    OotSaveInfo_InitDefault(&gSaveContext.save.shipSaveInfo.so2h.oot);
     //  #endregion
 
     Sram_GenerateRandomSaveFields();
@@ -1252,6 +1255,9 @@ void Sram_InitDebugSave(void) {
     gSaveContext.save.shipSaveInfo.fileCompletedAt = 0;
     gSaveContext.save.shipSaveInfo.filePlaytime = 0;
     gSaveContext.shipSaveContext.lastTimeLog = 0;
+    gSaveContext.save.shipSaveInfo.so2h.currentWorld = SCENE_ORIGIN_MM;
+    // SO2H [Save] patch 0004/0005: 100% debug save also fully completes the OOT side.
+    OotSaveInfo_FillDebugComplete(&gSaveContext.save.shipSaveInfo.so2h.oot);
     // #endregion
 
     Sram_GenerateRandomSaveFields();
@@ -1327,6 +1333,12 @@ void Sram_OpenSave(FileSelectState* fileSelect, SramContext* sramCtx) {
     s32 phi_t1;
     s32 pad1;
     s32 fileNum;
+
+    // SO2H [Save] patch 0004/0005: repair/re-stamp OOT save data on every file open, in
+    // case it's missing (pre-patch-0004 save), foreign (different so2h build), or was
+    // never fully loaded by whichever save path ran before this (JSON load vs raw
+    // flash/owl-save memcpy) - idempotent no-op when already valid.
+    OotSaveInfo_Validate(&gSaveContext.save.shipSaveInfo.so2h.oot);
 
     if (gSaveContext.flashSaveAvailable) {
         memset(sramCtx->saveBuf, 0, SAVE_BUFFER_SIZE);

@@ -116,6 +116,77 @@ inline void from_json(const json& j, RespawnData& respawnData) {
     j.at("tempCollectFlags").get_to(respawnData.tempCollectFlags);
 }
 
+inline void to_json(json& j, const OotItemEquips& ootEquips) {
+    j = json{
+        { "buttonItems", ootEquips.buttonItems },
+        { "cButtonSlots", ootEquips.cButtonSlots },
+        { "equipment", ootEquips.equipment },
+    };
+}
+
+inline void from_json(const json& j, OotItemEquips& ootEquips) {
+    j.at("buttonItems").get_to(ootEquips.buttonItems);
+    j.at("cButtonSlots").get_to(ootEquips.cButtonSlots);
+    j.at("equipment").get_to(ootEquips.equipment);
+}
+
+inline void to_json(json& j, const OotInventory& ootInventory) {
+    j = json{
+        { "items", ootInventory.items },
+        { "ammo", ootInventory.ammo },
+        { "equipment", ootInventory.equipment },
+        { "upgrades", ootInventory.upgrades },
+        { "questItems", ootInventory.questItems },
+        { "dungeonItems", ootInventory.dungeonItems },
+        { "dungeonKeys", ootInventory.dungeonKeys },
+    };
+}
+
+inline void from_json(const json& j, OotInventory& ootInventory) {
+    j.at("items").get_to(ootInventory.items);
+    j.at("ammo").get_to(ootInventory.ammo);
+    j.at("equipment").get_to(ootInventory.equipment);
+    j.at("upgrades").get_to(ootInventory.upgrades);
+    j.at("questItems").get_to(ootInventory.questItems);
+    j.at("dungeonItems").get_to(ootInventory.dungeonItems);
+    j.at("dungeonKeys").get_to(ootInventory.dungeonKeys);
+}
+
+// SO2H [Save] patch 0004/0005: `magic`/`version` are persisted so a save produced by an
+// older/newer so2h build can be detected and safely re-defaulted (see
+// OotSaveInfo_Validate in mm/2s2h/Compat/Save/oot_save_info.c) instead of trusting
+// possibly-mismatched item/equipment data.
+inline void to_json(json& j, const OotSaveInfo& oot) {
+    j = json{
+        { "magic", oot.magic },     { "version", oot.version },
+        { "equips", oot.equips },   { "inventory", oot.inventory },
+    };
+}
+
+inline void from_json(const json& j, OotSaveInfo& oot) {
+    j.at("magic").get_to(oot.magic);
+    j.at("version").get_to(oot.version);
+    j.at("equips").get_to(oot.equips);
+    j.at("inventory").get_to(oot.inventory);
+}
+
+inline void to_json(json& j, const So2hSaveInfo& so2h) {
+    j = json{
+        { "currentWorld", so2h.currentWorld },
+        { "oot", so2h.oot },
+    };
+}
+
+inline void from_json(const json& j, So2hSaveInfo& so2h) {
+    j.at("currentWorld").get_to(so2h.currentWorld);
+    so2h.oot = {}; // safe default (magic == 0) if "oot" is absent (pre-patch-0004 save) or malformed
+    if (j.contains("oot")) {
+        try {
+            j.at("oot").get_to(so2h.oot);
+        } catch (...) { so2h.oot = {}; }
+    }
+}
+
 inline void to_json(json& j, const ShipSaveInfo& shipSaveInfo) {
     uint8_t commitHash[8];
     memcpy(commitHash, shipSaveInfo.commitHash, sizeof(commitHash));
@@ -129,6 +200,10 @@ inline void to_json(json& j, const ShipSaveInfo& shipSaveInfo) {
         { "filePlaytime", shipSaveInfo.filePlaytime },
         { "respawn", shipSaveInfo.respawn },
         { "commitHash", commitHash },
+        // SO2H [Save] patch 0003/0004: world-origin + OOT item/equipment save data.
+        // Always written (not gated on saveType) since it applies to every save, unlike
+        // `rando` above which is randomizer-only.
+        { "so2h", shipSaveInfo.so2h },
     };
 
     if (shipSaveInfo.saveType == SAVETYPE_RANDO) {
@@ -145,6 +220,16 @@ inline void from_json(const json& j, ShipSaveInfo& shipSaveInfo) {
     j.at("filePlaytime").get_to(shipSaveInfo.filePlaytime);
     j.at("respawn").get_to(shipSaveInfo.respawn);
     j.at("commitHash").get_to(shipSaveInfo.commitHash);
+
+    // SO2H [Save] patch 0003/0004: default to SCENE_ORIGIN_MM / zeroed OotSaveInfo (magic
+    // mismatch triggers OotSaveInfo_Validate to re-init) when loading a save from before
+    // this field existed, instead of throwing and refusing to load old saves.
+    shipSaveInfo.so2h = {};
+    if (j.contains("so2h")) {
+        try {
+            j.at("so2h").get_to(shipSaveInfo.so2h);
+        } catch (...) { shipSaveInfo.so2h = {}; }
+    }
 
     if (shipSaveInfo.saveType == SAVETYPE_RANDO) {
         if (strcmp(shipSaveInfo.commitHash, gGitCommitHash) != 0) {
