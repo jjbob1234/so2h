@@ -2695,7 +2695,11 @@ void KaleidoScope_SetVertices(PlayState* play, GraphicsContext* gfxCtx) {
         // #endregion
     }
 
-    if (pauseCtx->pageIndex != PAUSE_MASK) {
+    // SO2H [Menu] fix: mapPageVtx's hex-opposite face shifted from PAUSE_MASK to
+    // PAUSE_EQUIP_OOT once the OOT pages were inserted into the 6-page ring (see the
+    // matching PAUSE_MAP/PAUSE_EQUIP_OOT visibility pair used in KaleidoScope_DrawPages).
+    // Leaving this as PAUSE_MASK meant mapPageVtx was skipped on the wrong frame.
+    if (pauseCtx->pageIndex != PAUSE_EQUIP_OOT) {
         if (!sInDungeonScene) {
             pauseCtx->mapPageVtx = GRAPH_ALLOC(
                 gfxCtx, ((PAGE_BG_QUADS + VTX_PAGE_MAP_WORLD_QUADS + WORLD_MAP_IMAGE_FRAG_NUM) * 4) * sizeof(Vtx));
@@ -2806,7 +2810,11 @@ void KaleidoScope_SetVertices(PlayState* play, GraphicsContext* gfxCtx) {
         }
     }
 
-    if (pauseCtx->pageIndex != PAUSE_MAP) {
+    // SO2H [Menu] fix: maskPageVtx's hex-opposite face shifted from PAUSE_MAP to
+    // PAUSE_ITEM_OOT once the OOT pages were inserted into the 6-page ring (see the
+    // matching PAUSE_ITEM_OOT/PAUSE_MASK visibility pair used in KaleidoScope_DrawPages).
+    // Leaving this as PAUSE_MAP meant maskPageVtx was skipped on the wrong frame.
+    if (pauseCtx->pageIndex != PAUSE_ITEM_OOT) {
         pauseCtx->maskPageVtx = GRAPH_ALLOC(gfxCtx, ((PAGE_BG_QUADS + VTX_PAGE_MASK_QUADS) * 4) * sizeof(Vtx));
         KaleidoScope_SetPageVertices(play, pauseCtx->maskPageVtx, VTX_PAGE_MASK, VTX_PAGE_MASK_QUADS);
 
@@ -2964,7 +2972,14 @@ void KaleidoScope_SetVertices(PlayState* play, GraphicsContext* gfxCtx) {
     // (which OOT item icon goes in each cell) is filled per-frame in
     // KaleidoScope_DrawItemSelectOot from gSaveContext...so2h.oot.inventory.items, not
     // here - this only lays out the quad positions/UVs once.
-    if (pauseCtx->pageIndex != PAUSE_ITEM_OOT) {
+    // SO2H [Menu] fix: this was gated on `!= PAUSE_ITEM_OOT` (itself), which meant the
+    // buffer never got reallocated while actually standing on the OOT Item page - by the
+    // next frame GRAPH_ALLOC had already recycled that graphics-pool memory for other draw
+    // calls, leaving KaleidoScope_DrawPages reading a dangling pointer (the pause-menu
+    // crash in gSPVertex). The buffer's true hex-opposite face is PAUSE_MASK (see the
+    // matching PAUSE_ITEM_OOT/PAUSE_MASK visibility pair used in KaleidoScope_DrawPages) -
+    // that's the only page it's safe to skip reallocating for.
+    if (pauseCtx->pageIndex != PAUSE_MASK) {
         pauseCtx->itemOotPageVtx = GRAPH_ALLOC(gfxCtx, ((PAGE_BG_QUADS + QUAD_ITEM_OOT_MAX) * 4) * sizeof(Vtx));
         KaleidoScope_SetPageVertices(play, pauseCtx->itemOotPageVtx, VTX_PAGE_ITEM, QUAD_ITEM_OOT_MAX);
 
@@ -3017,7 +3032,10 @@ void KaleidoScope_SetVertices(PlayState* play, GraphicsContext* gfxCtx) {
     // filled per-frame in KaleidoScope_DrawEquipmentOot from
     // gSaveContext...so2h.oot.inventory.equipment / .equips.equipment. No Link-doll quads
     // (out of scope this pass, see PauseContext.playerSegment TODO in z64pause_menu.h).
-    if (pauseCtx->pageIndex != PAUSE_EQUIP_OOT) {
+    // SO2H [Menu] fix: same stale-pointer bug as itemOotPageVtx above - gated on itself
+    // instead of its true hex-opposite face, PAUSE_MAP (see the matching
+    // PAUSE_MAP/PAUSE_EQUIP_OOT visibility pair used in KaleidoScope_DrawPages).
+    if (pauseCtx->pageIndex != PAUSE_MAP) {
         pauseCtx->equipOotPageVtx = GRAPH_ALLOC(gfxCtx, ((PAGE_BG_QUADS + QUAD_EQUIP_OOT_MAX) * 4) * sizeof(Vtx));
         KaleidoScope_SetPageVertices(play, pauseCtx->equipOotPageVtx, VTX_PAGE_MASK, QUAD_EQUIP_OOT_MAX);
 
