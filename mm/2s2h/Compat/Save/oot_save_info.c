@@ -27,17 +27,25 @@ bool OotSaveInfo_Validate(OotSaveInfo* oot) {
     return true;
 }
 
+// Real per-slot OOT item ids for the 24-slot item grid, ported verbatim from reference/soh's
+// SaveManager::InitFileDebug() `sItems` array (soh/SaveManager.cpp) so the debug-complete save
+// shows the exact same varied inventory (Deku Stick, Deku Nut, Bomb, Bow, ... Weird Egg) that
+// SoH itself uses, instead of every slot resolving to item id 0x00 (Deku Stick). Indices line up
+// 1:1 with OotItemIcons.cpp's `kOotItemArt` table (both are indexed by soh's raw ItemID enum).
+// ITEM_POCKET_EGG (slot 22) is 0x2D, one past OOT_ITEM_ICON_MAX_ID (0x2C), so it has no icon art
+// yet and falls back to the pre-existing outline-box draw - same documented fallback behavior
+// as any other id outside the known range, not a bug.
+static const u8 kOotDebugCompleteItems[24] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ITEM_STICK, ITEM_NUT, ITEM_BOMB, ITEM_BOW, ITEM_ARROW_FIRE, ITEM_DINS_FIRE
+    0x06, 0x07, 0x09, 0x0A, 0x0C, 0x0D, // ITEM_SLINGSHOT, ITEM_OCARINA_FAIRY, ITEM_BOMBCHU, ITEM_HOOKSHOT, ITEM_ARROW_ICE, ITEM_FARORES_WIND
+    0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, // ITEM_BOOMERANG, ITEM_LENS, ITEM_BEAN, ITEM_HAMMER, ITEM_ARROW_LIGHT, ITEM_NAYRUS_LOVE
+    0x14, 0x15, 0x16, 0x17, 0x2D, 0x21, // ITEM_BOTTLE, ITEM_POTION_RED, ITEM_POTION_GREEN, ITEM_POTION_BLUE, ITEM_POCKET_EGG, ITEM_WEIRD_EGG
+};
+
 void OotSaveInfo_FillDebugComplete(OotSaveInfo* oot) {
-    // SO2H TODO (patch 0004/0005 follow-up): this fills every slot/bit generically so the
-    // OOT Item/Equip pages have real, non-empty content to scaffold/test against. It does
-    // NOT yet assign real per-slot OOT item ids (that requires porting reference/soh's
-    // item table into KaleidoScope_DrawItemSelectOot first, see kaleido_compat_menu.c) -
-    // once that table exists, replace the item/ammo loops below with the same slot
-    // assignments SoH's own debug save uses so the grid shows correct icons, not just
-    // "some item is present in every slot."
     OotSaveInfo_InitDefault(oot);
 
-    memset(oot->inventory.items, 0, sizeof(oot->inventory.items)); // 0 = first valid OOT item id in every slot
+    memcpy(oot->inventory.items, kOotDebugCompleteItems, sizeof(oot->inventory.items));
     memset(oot->inventory.ammo, 99, sizeof(oot->inventory.ammo));
     oot->inventory.equipment = 0xFFFF;
     oot->inventory.upgrades = 0xFFFFFFFF;
