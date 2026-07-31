@@ -39,6 +39,7 @@
 #include "global.h"
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
 #include "assets/interface/parameter_static/parameter_static.h"
+#include "2s2h_assets.h"
 #include "2s2h/OotItemIcons.h"
 
 #define OOT_ITEM_NONE 0xFF // mirrors reference/soh's ITEM_NONE; kept local to avoid coupling to an OOT ItemId enum that doesn't exist in this tree yet
