@@ -1,83 +1,46 @@
-# Task: OOT pause page real icon/name/quantity art (this session)
+# so2h pause-menu redesign — scaffolding pass
 
-## Findings (confirmed via source read)
-- OOT icon textures live in merged mm.o2r under top-folder-prefixed path:
-  `__OTR__ootr_textures/icon_item_static/<gItemIcon*Tex symbol>` (32x32 RGBA32).
-  Source symbol list: reference `env/soh/soh/assets/textures/icon_item_static/icon_item_static.h`.
-- OOT item name (ENG) textures: `__OTR__ootr_textures/item_name_static/<g*ItemNameENGTex symbol>`
-  (128x16 IA4). Source: `env/soh/soh/assets/textures/item_name_static/item_name_static.h`.
-- `env/soh/soh/src/code/z_inventory.c` `gItemIcons[]` is indexed directly by `ItemID` (0x00
-  ITEM_STICK .. 0x2C ITEM_SOLD_OUT), 45 entries, 1:1 order match with icon_item_static.h's
-  declaration order AND with z_kaleido_scope_PAL.c's `iconNameTextures[LANGUAGE_ENG][]` order.
-  `mm/include/z64save.h` OotInventory.items[] "mirrors soh Inventory.items" -> stores this same
-  ItemID byte directly (OOT_ITEM_NONE 0xFF already used correctly in kaleido_compat_menu.c).
-- Equipment icons/names are NOT in that same ItemID-indexed array for the tiers we need generically;
-  used dedicated per-(EquipmentType,tier) symbols instead (KokiriSword/MasterSword/BiggoronSword,
-  ShieldDeku/Hylian/Mirror, TunicKokiri/Goron/Zora, BootsKokiri/Iron/Hover) - both icon + ENG name
-  variants confirmed to exist for all 12.
-- BUG FOUND: `OotAssets::GetOotIconVariant()` (mm/2s2h/OotAssets.cpp) prefixes the *basename*
-  with `ootr_`, but the real merge tool (`O2RMerger.cpp` `WithPrefixedTopFolder`) prefixes the
-  *first path component* (top folder), e.g. `textures/...` -> `ootr_textures/...`. Since OOT and
-  MM don't even share top-folder names (MM icons live under `icon_item_static_yar/`, OOT under
-  `textures/icon_item_static/`), the old function's "originalPath is an MM path, tweak its
-  basename" design was unusable for this anyway. Fixing it to take the OOT-side relative path
-  and prefix the top folder correctly (this session's OotAssets.cpp/h edit).
+Branch: `so2h-oot-menu-scaffold`  •  Base commit: `8d188ff26`
+Plan: `/home/user/plan.md` (approved by user)
 
-## Plan
-1. Fix `OotAssets::GetOotIconVariant` -> rename/refactor to `OotAssets::ResolveOotPath(relPath)`
-   taking an OOT-relative resource path (e.g. `textures/icon_item_static/gItemIconDekuStickTex`,
-   no `__OTR__`) and returning the full `__OTR__ootr_<toplevel>/...` runtime path, matching
-   `WithPrefixedTopFolder` exactly. Keep old name as a thin deprecated wrapper only if cheap;
-   otherwise just fix in place (no other caller exists yet per header comment).
-2. New `mm/2s2h/OotItemIcons.h/.cpp`: static tables (45 items + 12 equipment pieces) of
-   {icon relpath, ENG name relpath}, resolved once via `OotAssets::ResolveOotPath` into cached
-   `std::string`s, exposed to C via `extern "C"` accessor functions returning `const char*`
-   (TexturePtr-compatible): `OotItemIcons_GetItemIconPath(u8 itemId)`,
-   `OotItemIcons_GetItemNamePath(u8 itemId)`, `OotItemIcons_GetEquipIconPath(u8 equipType, u8 tier)`,
-   `OotItemIcons_GetEquipNamePath(u8 equipType, u8 tier)`. Return NULL/fallback for out-of-range
-   or when `OotAssets::IsOotContentAvailable()` is false (base-game-only install safety).
-3. Edit `kaleido_compat_menu.c`:
-   - `KaleidoScope_DrawItemSelectOot`: replace outline-box draw with
-     `KaleidoScope_DrawTexQuadRGBA32(gfxCtx, iconPath, 32, 32, 0)` when a resolved path exists,
-     falling back to the existing outline box otherwise (keeps base-game safety + acts as a
-     visible "missing art" indicator instead of crashing).
-   - `KaleidoScope_DrawEquipmentOot`: same swap using equip icon path.
-   - Add name+quantity overlay draw (new small helper) for both pages: when the cursor is on a
-     valid slot, draw the resolved 128x16 IA4 name texture via `Gfx_DrawTexQuad4b` at the same
-     screen position MM's native name panel uses (mirrors `KaleidoScope_UpdateNamePanel` /
-     `Kaleido_LoadItemNameStatic` pattern, but simpler: no nameSegment DMA staging needed since
-     these are already static resource paths, not a two-step load+draw).
-   - Ammo/quantity count: OOT ammo-bearing items map via OOT's own `SLOT_*`/ammo array
-     (`OotInventory.ammo[16]`) - reuse `KaleidoScope_DrawAmmoCount`-style digit draw
-     (`gAmmoDigitTextures`/existing MM digit textures - no OOT-specific digit art needed, digits
-     are just 0-9, MM's own digit textures are fine to reuse here) for slots that carry ammo.
-4. Build/commit/push per established workflow; update handover once pushed.
+## What this pass does
+Shrink the whole kaleidoscope scene into an animated top-left window and fill the freed
+space with a backwards-L bar: right arm = quest progress (MM + OOT), bottom arm = songs
+(display only). Quest page content moved out; its enum slot kept as a mod placeholder page.
 
-## Status: implementation done locally, not yet committed/pushed/built.
+## Files touched
+| File | Change |
+|---|---|
+| `mm/2s2h/Menu/so2h_pause_window.h/.c` | NEW. Window animation factor + rect (N64 320x240). Shared by the overlay and z_play.c. |
+| `mm/2s2h/framebuffer_effects.c/.h` | NEW `FB_DrawFromFramebufferRect` (top-left origin, black fill first). `FB_DrawFromFramebufferScaled` untouched. |
+| `mm/src/code/z_play.c` | Pause bg blit at the `PauseRenderDraw:` label now tracks the window rect; falls back to the vanilla full-screen blit when inactive. Added include. |
+| `.../ovl_kaleido_scope/so2h_quest_bar.h/.c` | NEW. L-bar layout, data, navigation, own 2D cursor highlight. Drawn on OVERLAY_DISP. |
+| `.../ovl_kaleido_scope/z_kaleido_scope.h` | Added `PAUSE_CURSOR_QUEST_BAR_RIGHT 12` / `_BOTTOM 13`. |
+| `.../ovl_kaleido_scope/z_kaleido_scope_NES.c` | Window viewport in `KaleidoScope_SetView`; bar draw + 3D cursor suppression in `KaleidoScope_Draw`; bar cursor hook before the per-page dispatch; window update in `KaleidoScope_Update`; infoPanelVtx `j` guards (x2); `UpdateCursorSize` early-out for bar positions; PAUSE_QUEST -> placeholder page + placeholder cursor; PAUSE_MAP world-map art + `DrawCursor` retuned to `SO2H_HEX_DEPTH`/`SO2H_HEX_SCALE`. |
 
-Files changed:
-- mm/2s2h/OotAssets.h/.cpp - GetOotIconVariant -> ResolveOotPath (fixed top-folder-prefix bug).
-- mm/2s2h/DeveloperTools/DeveloperTools.cpp - updated the one caller to the new function/paths.
-- mm/2s2h/OotItemIcons.h/.cpp - NEW. 45-entry item table + 4x5 equipment table, cached
-  resolved paths, extern "C" accessors.
-- mm/2s2h/Compat/Menu/kaleido_compat_menu.c - real icon draw (with outline fallback), ammo
-  digit overlay (own vertex-space helper, NOT Gfx_DrawTexRectIA8 - different coord space),
-  cursorItem[] feed for name panel, Kaleido_LoadItemNameStaticOot/Kaleido_LoadEquipNameStaticOot.
-- mm/src/overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h - prototypes for the two
-  new Load*NameStaticOot functions.
-- mm/src/overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope_NES.c -
-  KaleidoScope_UpdateNamePanel now branches on PAUSE_ITEM_OOT/PAUSE_EQUIP_OOT.
+## Deliberately NOT touched
+- `z_kaleido_collect.c` (whole file, incl. `KaleidoScope_DrawQuestStatus` / `KaleidoScope_UpdateQuestCursor`) — left defined, just unreferenced.
+- `KaleidoScope_DrawOwlWarpMapPage` and `R_PAUSE_WORLD_MAP_YAW/_DEPTH` — Owl Warp stays on the old 4-face cube geometry; window factor is forced to 0 for owl-warp states.
+- `PauseMenuPage` order (STRICTRULES.md rule 19; `tools/gen_pause_geometry.py` does not exist in this tree).
+- Song playback / Bombers Notebook main-states — left intact and unreferenced as future hooks.
 
-Not done / risks:
-- Never locally compiled (no local build attempted - this repo's build is CI-only per
-  established workflow; user watches CI personally). Reviewed by hand multiple times for
-  signature/type/coordinate-space correctness (esp. the vertex-space vs screen-pixel-space
-  mixup that was caught and fixed for the ammo digits).
-- Equip page's row order (row 0-3) is assumed to be EquipmentType order (sword,shield,tunic,
-  boots) matching soh's enum - not independently re-verified against how OotSaveInfo's
-  `equipment` bitfield rows were originally populated in an earlier session; if that ordering
-  differs, `OotItemIcons_GetEquipIconPath(row, tier)`'s `row` arg would need remapping.
-- No new save-field/gameplay logic touched, per scope.
+## Known limitations to state in the delivery summary
+- Song **names** are not rendered (note glyph + colour only).
+- Bar art is flat colour placeholder quads. Regions: A = bottom arm, B = right arm, C = corner.
+- OOT medallions / spiritual stones / Stone of Agony / Gerudo Card render as colour swatches — MM's `icon_item_static` has no OoT art and `OOT_ITEM_ICON_MAX_ID` (0x2C) is below the OoT medallion ids.
+- MM heart containers show a count only (no container icon in the archive).
+- Nothing in the bar is interactive.
+- Widescreen behaviour of a non-full-screen N64-space viewport under LUS is **unverified** — must be checked in-game.
 
-Next: commit + push, then (per established workflow) wait for user's explicit "check"/
-"status" before polling CI, then deliver a new build the same way as before.
+## Verification done locally
+- Brace/paren balance: clean on all 5 edited/added C files.
+- `gcc -fsyntax-only` with approximated flags: `so2h_pause_window.c`, `framebuffer_effects.c`,
+  `so2h_quest_bar.c` produce **zero** errors. `z_kaleido_scope_NES.c` goes 51 -> 52 errors, the
+  single new one being a `gSPVertex` `-Wint-conversion` identical in kind to the 20 pre-existing
+  ones in that file (artifact of the approximated flags, not a real defect).
+- No local build tree exists; real verification is CI.
+
+## Next
+1. Commit + push to `so2h-origin so2h-oot-menu-scaffold`.
+2. `AGENT_BUILD_RULES.md`: first CI check at **+15 min**, then every **5 min**, each documented with status + timestamp. Max 5 fix attempts.
+3. On green: pull the `2ship-windows` artifact, repack under `/home/user/so2h_builds/`, deliver zip + written change summary.

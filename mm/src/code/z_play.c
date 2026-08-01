@@ -46,6 +46,7 @@ u8 sMotionBlurStatus;
 #include "2s2h/Enhancements/Graphics/Graphics.h"
 #include "2s2h/DeveloperTools/CollisionViewer.h"
 #include "2s2h/framebuffer_effects.h"
+#include "2s2h/Menu/so2h_pause_window.h"
 #include <string.h>
 
 s32 gDbgCamEnabled = false;
@@ -1358,7 +1359,22 @@ void Play_DrawMain(PlayState* this) {
             if (R_PAUSE_BG_PRERENDER_STATE == PAUSE_BG_PRERENDER_READY) {
                 Gfx* sp8C = POLY_OPA_DISP;
 
-                FB_DrawFromFramebuffer(&sp8C, gPauseFrameBuffer, 255);
+                // SO2H [Menu]: the pause scene is shrunk into an animated top-left window,
+                // so the frozen background it sits on has to shrink with it. Falls back to
+                // the vanilla full-screen blit whenever the window is not engaged (Owl Warp,
+                // Game Over, and the first frames before the animation starts).
+                if (So2h_PauseWindow_IsActive()) {
+                    s32 so2hWinLeft;
+                    s32 so2hWinTop;
+                    s32 so2hWinRight;
+                    s32 so2hWinBottom;
+
+                    So2h_PauseWindow_GetRect(&so2hWinLeft, &so2hWinTop, &so2hWinRight, &so2hWinBottom);
+                    FB_DrawFromFramebufferRect(&sp8C, gPauseFrameBuffer, 255, so2hWinLeft, so2hWinTop, so2hWinRight,
+                                               so2hWinBottom);
+                } else {
+                    FB_DrawFromFramebuffer(&sp8C, gPauseFrameBuffer, 255);
+                }
 
                 gSPDisplayList(sp8C++, D_0E000000_TO_SEGMENTED(syncSegments));
                 POLY_OPA_DISP = sp8C;

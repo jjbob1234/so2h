@@ -175,3 +175,62 @@ void FB_DrawFromFramebufferScaled(Gfx** gfxp, s32 fb, u8 alpha, float scaleX, fl
 
     *gfxp = gfx;
 }
+
+/**
+ * SO2H [Menu]
+ *
+ * Draws the frozen pause background into an arbitrary destination rectangle instead of over
+ * the whole screen, so it can track the animated pause window (see 2s2h/Menu/so2h_pause_window.h).
+ *
+ * Differs from FB_DrawFromFramebufferScaled in two ways that the pause window needs:
+ *  - it is anchored by an explicit rect rather than symmetrically around the screen centre,
+ *  - it fills the screen with black first. Shrinking the blit leaves whatever was in the
+ *    colour buffer outside the destination rect, which without this shows up as smeared
+ *    garbage in the region the quest bar is drawn over.
+ *
+ * The rect is given in N64 320x240 coordinates and is fanned out proportionally across the
+ * widescreen-extended horizontal range, so at leftX=0/rightX=SCREEN_WIDTH this produces the
+ * exact same full-bleed image as FB_DrawFromFramebuffer (no pop when the animation starts).
+ */
+void FB_DrawFromFramebufferRect(Gfx** gfxp, s32 fb, u8 alpha, s32 leftX, s32 topY, s32 rightX, s32 bottomY) {
+    Gfx* gfx = *gfxp;
+    float wideLeft = (float)OTRGetRectDimensionFromLeftEdge(0);
+    float wideRight = (float)OTRGetRectDimensionFromRightEdge(SCREEN_WIDTH);
+    float wideWidth = wideRight - wideLeft;
+    float x0 = wideLeft + (wideWidth * ((float)leftX / (float)SCREEN_WIDTH));
+    float x1 = wideLeft + (wideWidth * ((float)rightX / (float)SCREEN_WIDTH));
+
+    // Clear to black across the full (widescreen-extended) screen first.
+    gDPPipeSync(gfx++);
+    gDPSetScissor(gfx++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    gDPSetCycleType(gfx++, G_CYC_FILL);
+    gDPSetRenderMode(gfx++, G_RM_NOOP, G_RM_NOOP2);
+    gDPSetFillColor(gfx++, (GPACK_RGBA5551(0, 0, 0, 1) << 16) | GPACK_RGBA5551(0, 0, 0, 1));
+    gDPFillWideRectangle(gfx++, OTRGetRectDimensionFromLeftEdge(0), 0,
+                         OTRGetRectDimensionFromRightEdge(SCREEN_WIDTH - 1), SCREEN_HEIGHT - 1);
+    gDPPipeSync(gfx++);
+
+    gSPMatrix(gfx++, &gIdentityMtx, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+
+    gDPSetEnvColor(gfx++, 255, 255, 255, alpha);
+
+    // Also restores G_CYC_1CYCLE and a real render mode after the fill pass above.
+    gDPSetOtherMode(gfx++,
+                    G_AD_NOISE | G_CD_NOISE | G_CK_NONE | G_TC_FILT | G_TF_POINT | G_TT_NONE | G_TL_TILE | G_TD_CLAMP |
+                        G_TP_NONE | G_CYC_1CYCLE | G_PM_NPRIMITIVE,
+                    G_AC_NONE | G_ZS_PRIM | G_RM_CLD_SURF | G_RM_CLD_SURF2);
+
+    gSPClearGeometryMode(gfx++, G_CULL_BOTH | G_FOG | G_LIGHTING | G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR);
+    gSPSetGeometryMode(gfx++, G_ZBUFFER | G_SHADE | G_SHADING_SMOOTH);
+
+    gDPSetCombineLERP(gfx++, TEXEL0, 0, ENVIRONMENT, 0, 0, 0, 0, ENVIRONMENT, TEXEL0, 0, ENVIRONMENT, 0, 0, 0, 0,
+                      ENVIRONMENT);
+
+    gDPSetScissor(gfx++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    gDPSetTextureImageFB(gfx++, 0, 0, 0, fb);
+    gDPImageRectangle(gfx++, (int)x0 << 2, topY << 2, 0, 0, (int)x1 << 2, bottomY << 2, OTRGetGameRenderWidth(),
+                      OTRGetGameRenderHeight(), G_TX_RENDERTILE, OTRGetGameRenderWidth(), OTRGetGameRenderHeight());
+
+    *gfxp = gfx;
+}

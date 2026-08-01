@@ -28,6 +28,11 @@
 #include "2s2h/Enhancements/Songs/Songs.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
+// #region SO2H [Menu] shrunken pause window + backwards-L quest/song bar
+#include "2s2h/Menu/so2h_pause_window.h"
+#include "so2h_quest_bar.h"
+// #endregion
+
 #pragma increment_block_number "n64-us:128"
 
 // Page Textures (Background of Page):
@@ -494,6 +499,64 @@ void KaleidoScope_MoveCursorFromSpecialPos(PlayState* play) {
 
     Interface_SetHudVisibility(HUD_VISIBILITY_ALL);
 }
+
+// #region SO2H [Menu] Quest page -> reserved mod placeholder page
+/**
+ * The Quest page's contents were moved out to the backwards-L quest bar
+ * (so2h_quest_bar.c), but its PauseMenuPage slot is kept: STRICTRULES.md rule 19 forbids
+ * reordering that enum, and the documented recovery procedure for a reorder
+ * (tools/gen_pause_geometry.py) does not exist in this tree - tools/ only contains
+ * check_save_field_offsets.py - so removing the slot would be unrecoverable. The hexagon
+ * therefore keeps all six faces and this one becomes a reserved page for future mod content.
+ *
+ * Draws a single flat marker quad inside the page frame so the face reads as "reserved"
+ * rather than "broken". Uses the page frame matrix the caller already loaded.
+ *
+ * KaleidoScope_DrawQuestStatus and the rest of z_kaleido_collect.c are deliberately left in
+ * the tree, just no longer called from here, so the vanilla page stays available.
+ */
+void KaleidoScope_DrawModPlaceholderPage(PlayState* play) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    OPEN_DISPS(play->state.gfxCtx);
+
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetCombineMode(POLY_OPA_DISP++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 120, 110, 90, pauseCtx->alpha);
+    gSPVertex(POLY_OPA_DISP++, &pauseCtx->questVtx[0], 4, 0);
+    gSP1Quadrangle(POLY_OPA_DISP++, 0, 2, 3, 1, 0);
+
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+/**
+ * Cursor handling for the placeholder page. It has exactly one dummy cell, so the only
+ * navigation it supports is stepping off onto the page-switch markers, which is what the
+ * vanilla pages do at their own edges.
+ */
+void KaleidoScope_UpdateModPlaceholderCursor(PlayState* play) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    pauseCtx->nameColorSet = PAUSE_NAME_COLOR_SET_WHITE;
+    pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_WHITE;
+    pauseCtx->cursorPoint[PAUSE_QUEST] = 0;
+    pauseCtx->cursorSlot[PAUSE_QUEST] = 0;
+    pauseCtx->namedItem = PAUSE_ITEM_NONE;
+
+    if ((pauseCtx->state != PAUSE_STATE_MAIN) || (pauseCtx->mainState != PAUSE_MAIN_STATE_IDLE) ||
+        pauseCtx->itemDescriptionOn || (pauseCtx->cursorSpecialPos != 0)) {
+        return;
+    }
+
+    if (pauseCtx->stickAdjX < -30) {
+        pauseCtx->cursorShrinkRate = 4.0f;
+        KaleidoScope_MoveCursorToSpecialPos(play, PAUSE_CURSOR_PAGE_LEFT);
+    } else if (pauseCtx->stickAdjX > 30) {
+        pauseCtx->cursorShrinkRate = 4.0f;
+        KaleidoScope_MoveCursorToSpecialPos(play, PAUSE_CURSOR_PAGE_RIGHT);
+    }
+}
+// #endregion
 
 void KaleidoScope_DrawTexQuadRGBA32(GraphicsContext* gfxCtx, TexturePtr texture, u16 width, u16 height, u16 point) {
     OPEN_DISPS(gfxCtx);
@@ -1054,19 +1117,29 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                     // Owl Warp screen.
                     Matrix_RotateYF(-2.0944f, MTXMODE_NEW);
 
+                    // SO2H FIX (folded in with the pause window work): the depth and scale
+                    // here were still the vanilla cube's - R_PAUSE_WORLD_MAP_DEPTH (-14000,
+                    // i.e. -140.0f) with an identity scale - while the page frame this art
+                    // sits inside is drawn at SO2H_HEX_DEPTH (-160.0f) with SO2H_HEX_SCALE
+                    // (0.78f). The map art therefore floated in front of its own frame and
+                    // was ~28% too large, which only became obvious once the whole scene was
+                    // shrunk into the pause window. R_PAUSE_WORLD_MAP_DEPTH cannot simply be
+                    // retuned because KaleidoScope_DrawOwlWarpMapPage still shares it and is
+                    // deliberately left on the old 4-face cube geometry, so the hex constants
+                    // are substituted locally instead. R_PAUSE_WORLD_MAP_Y_OFFSET is kept as
+                    // the vertical tuning register it already was.
                     if ((pauseCtx->state == PAUSE_STATE_OPENING_3) || (pauseCtx->state == PAUSE_STATE_OWL_WARP_3) ||
                         (pauseCtx->state >= PAUSE_STATE_OWL_WARP_6) ||
                         ((pauseCtx->state == PAUSE_STATE_SAVEPROMPT) &&
                          ((pauseCtx->savePromptState == PAUSE_SAVEPROMPT_STATE_3) ||
                           (pauseCtx->savePromptState == PAUSE_SAVEPROMPT_STATE_7)))) {
-                        Matrix_Translate(0.0f, (R_PAUSE_WORLD_MAP_Y_OFFSET - 8000) / 100.0f,
-                                         R_PAUSE_WORLD_MAP_DEPTH / 100.0f, MTXMODE_APPLY);
-                    } else {
-                        Matrix_Translate(0.0f, R_PAUSE_WORLD_MAP_Y_OFFSET / 100.0f, R_PAUSE_WORLD_MAP_DEPTH / 100.0f,
+                        Matrix_Translate(0.0f, (R_PAUSE_WORLD_MAP_Y_OFFSET - 8000) / 100.0f, SO2H_HEX_DEPTH,
                                          MTXMODE_APPLY);
+                    } else {
+                        Matrix_Translate(0.0f, R_PAUSE_WORLD_MAP_Y_OFFSET / 100.0f, SO2H_HEX_DEPTH, MTXMODE_APPLY);
                     }
 
-                    Matrix_Scale(1.0f, 1.0f, 1.0f, MTXMODE_APPLY);
+                    Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
                     Matrix_RotateXFApply(-pauseCtx->mapPageRoll / 100.0f);
 
                     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, gfxCtx);
@@ -1097,7 +1170,9 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                     KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->questPageVtx, sQuestPageBgTextures);
 
                 GameInteractor_ExecuteBeforeKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
-                KaleidoScope_DrawQuestStatus(play);
+                // SO2H [Menu]: quest content now lives in the backwards-L bar; this face is a
+                // reserved placeholder page. See KaleidoScope_DrawModPlaceholderPage.
+                KaleidoScope_DrawModPlaceholderPage(play);
                 GameInteractor_ExecuteAfterKaleidoDrawPage(pauseCtx, pauseCtx->pageIndex);
                 break;
 
@@ -1495,7 +1570,12 @@ void KaleidoScope_DrawInfoPanel(PlayState* play) {
 
     gSPDisplayList(POLY_OPA_DISP++, gRButtonIconDL);
 
-    if (pauseCtx->cursorSpecialPos != 0) {
+    // SO2H [Menu] guard: this maps cursorSpecialPos onto infoPanelVtx as (pos * 4) - 32,
+    // which is only defined for PAUSE_CURSOR_PAGE_LEFT (10 -> 8) and PAUSE_CURSOR_PAGE_RIGHT
+    // (11 -> 12). The new quest-bar positions 12/13 would index 16/20 and read past the
+    // 16-entry panel block, so they are excluded here; the bar draws its own cursor.
+    if ((pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) ||
+        (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_RIGHT)) {
         j = (pauseCtx->cursorSpecialPos * 4) - 32;
         pauseCtx->cursorVtx[0].v.ob[0] = pauseCtx->infoPanelVtx[j].v.ob[0];
         pauseCtx->cursorVtx[0].v.ob[1] = pauseCtx->infoPanelVtx[j].v.ob[1];
@@ -1943,7 +2023,12 @@ void KaleidoScope_DrawOwlWarpInfoPanel(PlayState* play) {
 
     gSPDisplayList(POLY_OPA_DISP++, gItemNamePanelDL);
 
-    if (pauseCtx->cursorSpecialPos != 0) {
+    // SO2H [Menu] guard: this maps cursorSpecialPos onto infoPanelVtx as (pos * 4) - 32,
+    // which is only defined for PAUSE_CURSOR_PAGE_LEFT (10 -> 8) and PAUSE_CURSOR_PAGE_RIGHT
+    // (11 -> 12). The new quest-bar positions 12/13 would index 16/20 and read past the
+    // 16-entry panel block, so they are excluded here; the bar draws its own cursor.
+    if ((pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) ||
+        (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_RIGHT)) {
         j = (pauseCtx->cursorSpecialPos * 4) - 32;
         pauseCtx->cursorVtx[0].v.ob[0] = pauseCtx->infoPanelVtx[j].v.ob[0];
         pauseCtx->cursorVtx[0].v.ob[1] = pauseCtx->infoPanelVtx[j].v.ob[1];
@@ -2054,6 +2139,13 @@ void KaleidoScope_SetView(PauseContext* pauseCtx, f32 eyeX, f32 eyeY, f32 eyeZ) 
     Vec3f eye;
     Vec3f at;
     Vec3f up;
+    // #region SO2H [Menu]
+    Viewport so2hViewport;
+    s32 so2hLeft;
+    s32 so2hTop;
+    s32 so2hRight;
+    s32 so2hBottom;
+    // #endregion
 
     eye.x = eyeX;
     eye.y = eyeY;
@@ -2061,6 +2153,24 @@ void KaleidoScope_SetView(PauseContext* pauseCtx, f32 eyeX, f32 eyeY, f32 eyeZ) 
     at.x = at.y = at.z = 0.0f;
     up.x = up.z = 0.0f;
     up.y = 1.0f;
+
+    // #region SO2H [Menu] Shrink the whole kaleidoscope scene into the animated top-left
+    // window. This is the single camera choke point for the pause menu - every page, the
+    // info panel and the vanilla cursor all go through here - so applying the window as a
+    // viewport here moves the entire scene at once instead of re-deriving a matrix per page.
+    //
+    // View_ApplyPerspective recomputes its aspect from the viewport rect, so a non-square
+    // window is not distorted. The rect is produced in N64 320x240 space by
+    // So2h_PauseWindow_GetRect, never hardcoded, and collapses to the full screen (a no-op
+    // versus vanilla) whenever the window factor is 0 - which includes the entire Owl Warp
+    // flow, so KaleidoScope_DrawOwlWarpMapPage is left exactly as it was.
+    So2h_PauseWindow_GetRect(&so2hLeft, &so2hTop, &so2hRight, &so2hBottom);
+    so2hViewport.leftX = so2hLeft;
+    so2hViewport.topY = so2hTop;
+    so2hViewport.rightX = so2hRight;
+    so2hViewport.bottomY = so2hBottom;
+    View_SetViewport(&pauseCtx->view, &so2hViewport);
+    // #endregion
 
     View_LookAt(&pauseCtx->view, &eye, &at, &up);
     View_Apply(&pauseCtx->view,
@@ -3384,6 +3494,15 @@ void KaleidoScope_UpdateCursorSize(PlayState* play) {
 
         pauseCtx->cursorSpinPhase += 0x300;
     } else {
+        // SO2H [Menu]: positions 12/13 mean the cursor is in a quest bar arm, which is drawn
+        // in 2D screen space outside the pause window. Nothing here applies to it - the bar
+        // draws its own highlight - so leave the 3D cursor parked where it was and skip the
+        // size/spin update rather than letting 12/13 fall into the PAGE_RIGHT branch.
+        if ((pauseCtx->cursorSpecialPos == PAUSE_CURSOR_QUEST_BAR_RIGHT) ||
+            (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_QUEST_BAR_BOTTOM)) {
+            return;
+        }
+
         if (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) {
             pauseCtx->cursorX = -93.0f;
         } else { // PAUSE_CURSOR_PAGE_RIGHT
@@ -3451,12 +3570,22 @@ void KaleidoScope_DrawCursor(PlayState* play) {
         gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, sCursorPrimR, sCursorPrimG, sCursorPrimB, 255);
         gDPSetEnvColor(POLY_OPA_DISP++, sCursorEnvR, sCursorEnvG, sCursorEnvB, 255);
 
-        Matrix_Translate(pauseCtx->cursorX, pauseCtx->cursorY, -50.0f, MTXMODE_NEW);
-        Matrix_Scale(1.0f, 1.0f, 1.0f, MTXMODE_APPLY);
+        // SO2H FIX (folded in with the pause window work): the cursor built its own fresh
+        // MTXMODE_NEW matrix at the vanilla cube's z = -50.0f with an identity scale, while
+        // every hexagon page is drawn at SO2H_HEX_DEPTH with SO2H_HEX_SCALE. That mismatch is
+        // why the cursor sat at a different apparent depth and size from the page it was
+        // supposed to be sitting on, and it got worse once the whole scene was pushed into
+        // the shrunken window. Derived from the same two constants as the pages now, so the
+        // cursor tracks the page geometry automatically if those are ever retuned.
+        // The per-circle offsets below stay in the page's local space and are therefore
+        // applied at zero additional depth rather than re-adding the old -50.0f.
+        Matrix_Translate(pauseCtx->cursorX * SO2H_HEX_SCALE, pauseCtx->cursorY * SO2H_HEX_SCALE, SO2H_HEX_DEPTH,
+                         MTXMODE_NEW);
+        Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
 
         for (i = 0; i < 4; i++) {
             Matrix_Push();
-            Matrix_Translate(sCursorCirclesX[i], sCursorCirclesY[i], -50.0f, MTXMODE_APPLY);
+            Matrix_Translate(sCursorCirclesX[i], sCursorCirclesY[i], 0.0f, MTXMODE_APPLY);
             MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, play->state.gfxCtx);
             gDPPipeSync(POLY_OPA_DISP++);
             gDPLoadTextureBlock(POLY_OPA_DISP++, gPauseMenuCursorTex, G_IM_FMT_IA, G_IM_SIZ_8b, 16, 16, 0,
@@ -3557,9 +3686,16 @@ void KaleidoScope_Draw(PlayState* play) {
 
             KaleidoScope_UpdateCursorSize(play);
 
-            if (pauseCtx->state == PAUSE_STATE_MAIN) {
+            // SO2H [Menu]: while the cursor is parked in one of the quest bar arms it is
+            // outside the shrunken window entirely, so the 3D cursor is suppressed and
+            // So2h_QuestBar_Draw renders a 2D highlight on the selected cell instead.
+            if ((pauseCtx->state == PAUSE_STATE_MAIN) && !So2h_QuestBar_IsCursorInBar(pauseCtx)) {
                 KaleidoScope_DrawCursor(play);
             }
+
+            // SO2H [Menu]: drawn last and on OVERLAY_DISP with the full screen scissor
+            // restored, so it is never clipped or scaled by the window viewport above.
+            So2h_QuestBar_Draw(play);
 
             if ((pauseCtx->state >= PAUSE_STATE_GAMEOVER_3) && (pauseCtx->state <= PAUSE_STATE_GAMEOVER_10) &&
                 (play->gameOverCtx.state != GAMEOVER_INACTIVE)) {
@@ -3706,6 +3842,17 @@ void KaleidoScope_Update(PlayState* play) {
     s16 stickAdjX = input->rel.stick_x;
 
     MapDisp_UpdateDungeonMap(play);
+
+    // #region SO2H [Menu] Advance the pause window animation before anything reads it this
+    // frame. Driven from the pause state only, so the Owl Warp and Game Over flows keep the
+    // vanilla full-screen scene. Note the window is read by z_play.c's background blit too,
+    // hence the state lives in 2s2h/Menu rather than in this overlay.
+    So2h_PauseWindow_Update(pauseCtx->state, IS_PAUSE_STATE_OWL_WARP(pauseCtx));
+    if ((pauseCtx->state == PAUSE_STATE_OFF) || (pauseCtx->state == PAUSE_STATE_OPENING_0) ||
+        (pauseCtx->state == PAUSE_STATE_OPENING_1)) {
+        So2h_QuestBar_Reset();
+    }
+    // #endregion
 
     pauseCtx->stickAdjX = input->rel.stick_x;
     pauseCtx->stickAdjY = input->rel.stick_y;
@@ -4636,7 +4783,16 @@ void KaleidoScope_Update(PlayState* play) {
         !IS_PAUSE_STATE_OWL_WARP(pauseCtx) &&
         (((pauseCtx->state >= PAUSE_STATE_OPENING_3) && (pauseCtx->state <= PAUSE_STATE_SAVEPROMPT)) ||
          ((pauseCtx->state >= PAUSE_STATE_GAMEOVER_2) && (pauseCtx->state <= PAUSE_STATE_UNPAUSE_SETUP)))) {
+        // SO2H [Menu]: the quest bar gets first refusal on the frame's stick input. When it
+        // consumes the input the cursor is inside one of the arms, so neither the per-page
+        // cursor update nor page switching may run this frame.
+        s32 so2hBarConsumedInput = false;
+
         if (!IS_PAUSE_STATE_GAMEOVER(pauseCtx)) {
+            so2hBarConsumedInput = So2h_QuestBar_UpdateCursor(play);
+        }
+
+        if (!IS_PAUSE_STATE_GAMEOVER(pauseCtx) && !so2hBarConsumedInput) {
             switch (pauseCtx->pageIndex) {
                 case PAUSE_ITEM:
                     KaleidoScope_UpdateItemCursor(play);
@@ -4651,7 +4807,9 @@ void KaleidoScope_Update(PlayState* play) {
                     break;
 
                 case PAUSE_QUEST:
-                    KaleidoScope_UpdateQuestCursor(play);
+                    // SO2H [Menu]: placeholder page, single dummy cell.
+                    // KaleidoScope_UpdateQuestCursor is left defined in z_kaleido_collect.c.
+                    KaleidoScope_UpdateModPlaceholderCursor(play);
                     break;
 
                 case PAUSE_MASK:
