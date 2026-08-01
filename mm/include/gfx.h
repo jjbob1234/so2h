@@ -38,7 +38,17 @@ typedef struct GfxPool {
     // #region 2S2H [Port] Doubled the size of the dlist buffers to account for additional instructions,
     // and the fact that DLists that reference OTR resources are effectively doubled in size.
     /* 0x00308 */ Gfx polyXluBuffer[0x1000];
-    /* 0x04308 */ Gfx overlayBuffer[0x800];
+    // #region SO2H [Menu] The overlay buffer was still at the vanilla-derived 0x800 entries while
+    // the pause menu now draws the whole merged quest/song bar (two nine-slice panels, a hexagon
+    // sub-window, two icon rings, three collectible rows, 22 song cells and a button strip) into
+    // OVERLAY_DISP on top of everything the HUD/kaleido code already puts there. That crossed 2048
+    // Gfx and ran off the end of the buffer straight into workBuffer/debugBuffer, which the master
+    // DL branches to - i.e. Fast3D executed corrupted commands and the process died silently with
+    // no trace. graph.c's headMagic/tailMagic and THGA_IsCrash reports are commented out in this
+    // port, so nothing caught it. There are no hardware constraints here (PC, LUS/Fast3D), so the
+    // buffer is simply given real headroom; so2h_quest_bar.c additionally refuses to emit past a
+    // reserve near the arena tail so an overflow can never silently corrupt memory again.
+    /* 0x04308 */ Gfx overlayBuffer[0x4000];
     /* 0x06308 */ Gfx workBuffer[0x80];
     /* 0x06508 */ Gfx debugBuffer[0x80];
     /* 0x06708 */ Gfx polyOpaBuffer[0x6700];

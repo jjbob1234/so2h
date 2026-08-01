@@ -405,6 +405,31 @@ static s32 So2h_SongOwned(s16 songIndex) {
 // Draw helpers
 // ---------------------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------------------
+// OVERLAY_DISP budget guard.
+//
+// This file writes straight into OVERLAY_DISP with `gfx++` (the same thing every other 2S2H
+// HUD/menu drawer does), which bypasses the THGA bounds entirely. The bar is by far the
+// biggest single consumer of the overlay list in the game, and overrunning the buffer does
+// not fault - it walks into workBuffer/debugBuffer, which the master DL branches to, so
+// Fast3D ends up executing garbage and the process dies with no log line and no stack. Both
+// reported crashes were this: with OOT content merged the hexagon window + medallion ring
+// pushed it over on pause open, and without OOT content the extra button-strip glyphs and
+// cursor highlight pushed it over as soon as the cursor landed on a song.
+//
+// The buffer itself now has real headroom (see gfx.h), but every emit still goes through one
+// of the four primitives below, and each one refuses to write when fewer than
+// SO2H_GFX_RESERVE entries are left before the arena tail. Worst case the bar draws
+// partially for a frame instead of corrupting memory.
+// ---------------------------------------------------------------------------------------
+#define SO2H_GFX_RESERVE 64
+
+static Gfx* sGfxBudgetEnd = NULL;
+
+static s32 So2h_GfxRoom(Gfx* gfx, s32 need) {
+    return (sGfxBudgetEnd == NULL) || ((gfx + need + SO2H_GFX_RESERVE) < sGfxBudgetEnd);
+}
+
 /**
  * Maps an N64 320-wide x coordinate onto the widescreen-extended range, proportionally.
  * This is the same fan-out FB_DrawFromFramebufferRect applies to the pause background, so
@@ -418,6 +443,9 @@ static s16 So2h_MapX(s16 x) {
 }
 
 static Gfx* So2h_FillRect(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, u8 r, u8 g, u8 b, u8 a) {
+    if (!So2h_GfxRoom(gfx, 4)) {
+        return gfx;
+    }
     gDPPipeSync(gfx++);
     gDPSetCombineMode(gfx++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
     gDPSetPrimColor(gfx++, 0, 0, r, g, b, a);
@@ -433,8 +461,14 @@ static Gfx* So2h_FillRect(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, u8 r, u8 g, 
  */
 static Gfx* So2h_DrawTexRectRGBA32(Gfx* gfx, TexturePtr texture, s16 textureWidth, s16 textureHeight, s16 rectLeft,
                                    s16 rectTop, s16 rectWidth, s16 rectHeight) {
-    u16 dsdx = (u16)(((u32)textureWidth << 10) / (u32)rectWidth);
-    u16 dtdy = (u16)(((u32)textureHeight << 10) / (u32)rectHeight);
+    u16 dsdx;
+    u16 dtdy;
+
+    if ((rectWidth <= 0) || (rectHeight <= 0) || !So2h_GfxRoom(gfx, 16)) {
+        return gfx;
+    }
+    dsdx = (u16)(((u32)textureWidth << 10) / (u32)rectWidth);
+    dtdy = (u16)(((u32)textureHeight << 10) / (u32)rectHeight);
 
     gDPLoadTextureBlock(gfx++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, textureWidth, textureHeight, 0,
                         G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
@@ -476,11 +510,17 @@ static Gfx* So2h_DrawIARect(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, s1
     w = right - left;
     h = y1 - y0;
 
+    if (!So2h_GfxRoom(gfx, 16)) {
+        return gfx;
+    }
     return Gfx_DrawTexRectIA8(gfx, texture, texW, texH, left, y0, w, h, (u16)(((u32)texW << 10) / (u32)w),
                               (u16)(((u32)texH << 10) / (u32)h));
 }
 
 static Gfx* So2h_SetupSkinMode(Gfx* gfx, u8 alpha) {
+    if (!So2h_GfxRoom(gfx, 3)) {
+        return gfx;
+    }
     gDPPipeSync(gfx++);
     gDPSetCombineMode(gfx++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
     gDPSetPrimColor(gfx++, 0, 0, 255, 255, 255, alpha);
@@ -489,6 +529,9 @@ static Gfx* So2h_SetupSkinMode(Gfx* gfx, u8 alpha) {
 }
 
 static Gfx* So2h_SetupTintMode(Gfx* gfx, u8 r, u8 g, u8 b, u8 alpha) {
+    if (!So2h_GfxRoom(gfx, 3)) {
+        return gfx;
+    }
     gDPPipeSync(gfx++);
     gDPSetCombineMode(gfx++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
     gDPSetPrimColor(gfx++, 0, 0, r, g, b, alpha);
@@ -497,6 +540,9 @@ static Gfx* So2h_SetupTintMode(Gfx* gfx, u8 r, u8 g, u8 b, u8 alpha) {
 }
 
 static Gfx* So2h_SetupIAMode(Gfx* gfx, u8 r, u8 g, u8 b, u8 alpha) {
+    if (!So2h_GfxRoom(gfx, 3)) {
+        return gfx;
+    }
     gDPPipeSync(gfx++);
     gDPSetCombineMode(gfx++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
     gDPSetPrimColor(gfx++, 0, 0, r, g, b, alpha);
@@ -509,6 +555,9 @@ static Gfx* So2h_SetupIAMode(Gfx* gfx, u8 r, u8 g, u8 b, u8 alpha) {
  * the cycle type or render mode (the texture-rect helpers do).
  */
 static Gfx* So2h_RestoreBlendState(Gfx* gfx) {
+    if (!So2h_GfxRoom(gfx, 3)) {
+        return gfx;
+    }
     gDPPipeSync(gfx++);
     gDPSetCycleType(gfx++, G_CYC_1CYCLE);
     gDPSetRenderMode(gfx++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
@@ -583,8 +632,14 @@ static Gfx* So2h_DrawCount(Gfx* gfx, s16 value, s16 rightX, s16 topY, u8 alpha) 
 
     x = rightX - (count * 7);
     for (i = count - 1; i >= 0; i--) {
-        gfx = Gfx_DrawTexRectIA8(gfx, (TexturePtr)sCounterTextures[digits[i]], 8, 16, So2h_MapX(x), topY, 6, 12,
-                                 (8 << 10) / 6, (16 << 10) / 12);
+        if (!So2h_GfxRoom(gfx, 16)) {
+            break;
+        }
+        // sCounterTextures[] is I8 everywhere else in the codebase (z_parameter.c's HUD counters
+        // and z_kaleido_collect.c both load it as G_IM_FMT_I / G_IM_SIZ_8b); drawing it as IA8
+        // reinterprets the intensity ramp as alpha and makes the digits fade out.
+        gfx = Gfx_DrawTexRectI8(gfx, (TexturePtr)sCounterTextures[digits[i]], 8, 16, So2h_MapX(x), topY, 6, 12,
+                                (8 << 10) / 6, (16 << 10) / 12);
         x += 7;
     }
 
@@ -1159,6 +1214,10 @@ void So2h_QuestBar_Draw(PlayState* play) {
     Gfx_SetupDL39_Overlay(play->state.gfxCtx);
 
     gfx = OVERLAY_DISP;
+    // Arm the budget guard: every So2h_* emitter checks against the overlay arena tail before
+    // writing, so a full quest page degrades (drops the tail of the frame) instead of running
+    // off the end of overlayBuffer and into the neighbouring pool buffers.
+    sGfxBudgetEnd = (Gfx*)play->state.gfxCtx->overlay.d;
 
     gDPPipeSync(gfx++);
     // The pause pages render through a shrunken viewport, which leaves the scissor clipped
@@ -1231,6 +1290,7 @@ void So2h_QuestBar_Draw(PlayState* play) {
     }
 
     gDPPipeSync(gfx++);
+    sGfxBudgetEnd = NULL;
     OVERLAY_DISP = gfx;
 
     CLOSE_DISPS(play->state.gfxCtx);

@@ -33,4 +33,24 @@ std::string ResolveOotPath(const std::string& ootRelativePath) {
     return "__OTR__" + withTopFolderPrefixed;
 }
 
+bool OotFileExists(const std::string& resolvedOrEntryPath) {
+    auto resourceManager = Ship::Context::GetRawInstance()->GetResourceManager();
+    if (resourceManager == nullptr) {
+        return false;
+    }
+    auto archiveManager = resourceManager->GetArchiveManager();
+    if (archiveManager == nullptr) {
+        return false;
+    }
+
+    // ArchiveManager::HasFile wants the raw archive entry name, so strip the "__OTR__" scheme
+    // prefix if the caller passed a ResolveOotPath() result (same pattern as
+    // DeveloperTools::ValidateOotIconAssetsFor100PercentSave).
+    static const std::string kScheme = "__OTR__";
+    if (resolvedOrEntryPath.compare(0, kScheme.size(), kScheme) == 0) {
+        return archiveManager->HasFile(resolvedOrEntryPath.substr(kScheme.size()));
+    }
+    return archiveManager->HasFile(resolvedOrEntryPath);
+}
+
 } // namespace OotAssets

@@ -33,4 +33,14 @@ bool IsOotContentAvailable();
 // OotItemIcons.cpp does).
 std::string ResolveOotPath(const std::string& ootRelativePath);
 
+// True if the merged archive actually contains the entry named by a ResolveOotPath() result.
+// Accepts the "__OTR__"-prefixed form (the prefix is stripped before asking ArchiveManager,
+// which wants a raw archive entry name) as well as a bare entry name.
+//
+// SO2H [Menu]: needed because a merge can succeed (oot_version present, IsOotContentAvailable()
+// true) while a *specific* folder the merge filter never carried - e.g.
+// "textures/icon_item_24_static" - is absent. Before this, such a path still looked resolvable
+// and was handed straight to the renderer as a texture, which is not a survivable failure.
+bool OotFileExists(const std::string& resolvedOrEntryPath);
+
 } // namespace OotAssets

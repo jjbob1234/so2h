@@ -112,11 +112,38 @@ const OotItemArt kOotEquipArt[4][5] = {
 // Resolved-path cache: OotAssets::ResolveOotPath just does string concatenation, but callers
 // (drawn every frame the pause menu is open) get a plain persistent `const char*` back instead
 // of paying for + owning a fresh std::string each call.
-std::string ResolveCached(const char* relPath) {
-    if (relPath == nullptr) {
-        return std::string();
+//
+// SO2H [Menu] crash fix: resolution alone is NOT enough. `IsOotContentAvailable()` only says a
+// merge happened; individual folders (notably textures/icon_item_24_static and the
+// gPauseQuestStatus* tiles) may still be absent from the user's oot.o2r. A resolvable-looking
+// path for a non-existent entry used to be handed to the renderer as a texture pointer, which
+// is fatal. Every lookup now verifies the entry exists once and caches the verdict.
+//
+// The cache can't use `empty()` as "not looked up yet" any more, because "looked up, missing"
+// is also empty - hence the parallel state array.
+enum CacheState : unsigned char {
+    CACHE_UNRESOLVED = 0,
+    CACHE_PRESENT = 1,
+    CACHE_MISSING = 2,
+};
+
+// Resolves + existence-checks once, then answers from cache. Returns nullptr when the relative
+// path is null or the entry is not in the merged archive.
+const char* ResolveChecked(const char* relPath, std::string& cache, unsigned char& state) {
+    if (state == CACHE_UNRESOLVED) {
+        if (relPath == nullptr) {
+            state = CACHE_MISSING;
+        } else {
+            std::string resolved = OotAssets::ResolveOotPath(relPath);
+            if (OotAssets::OotFileExists(resolved)) {
+                cache = resolved;
+                state = CACHE_PRESENT;
+            } else {
+                state = CACHE_MISSING;
+            }
+        }
     }
-    return OotAssets::ResolveOotPath(relPath);
+    return (state == CACHE_PRESENT) ? cache.c_str() : nullptr;
 }
 
 } // namespace
@@ -126,10 +153,8 @@ extern "C" const char* OotItemIcons_GetItemIconPath(unsigned char itemId) {
         return nullptr;
     }
     static std::array<std::string, OOT_ITEM_ICON_MAX_ID + 1> sCache;
-    if (sCache[itemId].empty()) {
-        sCache[itemId] = ResolveCached(kOotItemArt[itemId].iconRelPath);
-    }
-    return sCache[itemId].c_str();
+    static std::array<unsigned char, OOT_ITEM_ICON_MAX_ID + 1> sState{};
+    return ResolveChecked(kOotItemArt[itemId].iconRelPath, sCache[itemId], sState[itemId]);
 }
 
 extern "C" const char* OotItemIcons_GetItemNamePath(unsigned char itemId) {
@@ -137,10 +162,8 @@ extern "C" const char* OotItemIcons_GetItemNamePath(unsigned char itemId) {
         return nullptr;
     }
     static std::array<std::string, OOT_ITEM_ICON_MAX_ID + 1> sCache;
-    if (sCache[itemId].empty()) {
-        sCache[itemId] = ResolveCached(kOotItemArt[itemId].nameRelPath);
-    }
-    return sCache[itemId].c_str();
+    static std::array<unsigned char, OOT_ITEM_ICON_MAX_ID + 1> sState{};
+    return ResolveChecked(kOotItemArt[itemId].nameRelPath, sCache[itemId], sState[itemId]);
 }
 
 extern "C" const char* OotItemIcons_GetEquipIconPath(unsigned char equipType, unsigned char tier) {
@@ -148,10 +171,9 @@ extern "C" const char* OotItemIcons_GetEquipIconPath(unsigned char equipType, un
         return nullptr;
     }
     static std::array<std::array<std::string, 5>, 4> sCache;
-    if (sCache[equipType][tier].empty()) {
-        sCache[equipType][tier] = ResolveCached(kOotEquipArt[equipType][tier].iconRelPath);
-    }
-    return sCache[equipType][tier].c_str();
+    static std::array<std::array<unsigned char, 5>, 4> sState{};
+    return ResolveChecked(kOotEquipArt[equipType][tier].iconRelPath, sCache[equipType][tier],
+                          sState[equipType][tier]);
 }
 
 extern "C" const char* OotItemIcons_GetEquipNamePath(unsigned char equipType, unsigned char tier) {
@@ -159,10 +181,9 @@ extern "C" const char* OotItemIcons_GetEquipNamePath(unsigned char equipType, un
         return nullptr;
     }
     static std::array<std::array<std::string, 5>, 4> sCache;
-    if (sCache[equipType][tier].empty()) {
-        sCache[equipType][tier] = ResolveCached(kOotEquipArt[equipType][tier].nameRelPath);
-    }
-    return sCache[equipType][tier].c_str();
+    static std::array<std::array<unsigned char, 5>, 4> sState{};
+    return ResolveChecked(kOotEquipArt[equipType][tier].nameRelPath, sCache[equipType][tier],
+                          sState[equipType][tier]);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -208,8 +229,6 @@ extern "C" const char* OotQuestArt_GetPath(int artId) {
         return nullptr;
     }
     static std::array<std::string, OOT_QUEST_ART_MAX> sCache;
-    if (sCache[artId].empty()) {
-        sCache[artId] = ResolveCached(kOotQuestArt[artId]);
-    }
-    return sCache[artId].c_str();
+    static std::array<unsigned char, OOT_QUEST_ART_MAX> sState{};
+    return ResolveChecked(kOotQuestArt[artId], sCache[artId], sState[artId]);
 }
