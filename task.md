@@ -25,10 +25,11 @@ space with a backwards-L bar: right arm = quest progress (MM + OOT), bottom arm 
 - Song playback / Bombers Notebook main-states — left intact and unreferenced as future hooks.
 
 ## Known limitations to state in the delivery summary
-- Song **names** are not rendered (note glyph + colour only).
-- Bar art is flat colour placeholder quads. Regions: A = bottom arm, B = right arm, C = corner.
-- OOT medallions / spiritual stones / Stone of Agony / Gerudo Card render as colour swatches — MM's `icon_item_static` has no OoT art and `OOT_ITEM_ICON_MAX_ID` (0x2C) is below the OoT medallion ids.
-- MM heart containers show a count only (no container icon in the archive).
+- Song **names** are not rendered (note glyph + colour + the cursored song's button sequence only).
+- Bar art is real: nine-slice panels from the SO2H menu sheet (`mm/assets/custom/textures/so2h_menu`), MM's own archives, and OOT's merged assets. Regions: right arm = merged quest page, bottom arm = 22 songs, full width (the old bottom-right corner preview window was removed to make room).
+- OOT medallions / spiritual stones / Stone of Agony / Gerudo Card now use OOT's real `icon_item_24_static` art via `OotQuestArt_GetPath` (`mm/2s2h/OotItemIcons.h`) — a table separate from `kOotItemArt`, so `OOT_ITEM_ICON_MAX_ID` (0x2C) is untouched. On an MM-only install the getter returns NULL and each icon degrades to an empty recessed slot.
+- The hexagon line-art is OOT's own `gPauseQuestStatus` tiles (IA8, so monochrome — it takes a prim-colour tint).
+- Heart tracker uses MM's own 48x48 IA8 `gItemIcons[0x7A + heartPieceCount]` plus the heart total; no colour swatches remain anywhere in the bar.
 - Nothing in the bar is interactive.
 - Widescreen behaviour of a non-full-screen N64-space viewport under LUS is **unverified** — must be checked in-game.
 

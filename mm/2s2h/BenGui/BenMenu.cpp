@@ -56,6 +56,9 @@ static const std::unordered_map<int32_t, const char*> menuThemeOptions = {
     { UIWidgets::Colors::Brown, "Brown" },
     { UIWidgets::Colors::Gray, "Gray" },
     { UIWidgets::Colors::DarkGray, "Dark Gray" },
+    // SO2H [Menu] - matches the copper pause-menu skin, and is the SO2H default.
+    { UIWidgets::Colors::So2hCopper, "SO2H Copper" },
+    { UIWidgets::Colors::So2hFlame, "SO2H Flame" },
 };
 
 static const std::vector<const char*> alwaysWinDoggyraceOptions = {
@@ -2170,7 +2173,8 @@ void BenMenu::AddDevTools() {
 }
 
 BenMenu::BenMenu(const std::string& consoleVariable, const std::string& name)
-    : Menu(consoleVariable, name, 0, UIWidgets::Colors::LightBlue) {
+    // SO2H [Menu] default the settings UI to the copper theme so it matches the pause L-bar.
+    : Menu(consoleVariable, name, 0, UIWidgets::Colors::So2hCopper) {
 }
 
 void BenMenu::InitElement() {

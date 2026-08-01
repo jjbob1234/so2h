@@ -164,3 +164,52 @@ extern "C" const char* OotItemIcons_GetEquipNamePath(unsigned char equipType, un
     }
     return sCache[equipType][tier].c_str();
 }
+
+// ---------------------------------------------------------------------------------------
+// SO2H merged quest bar art. See the OotQuestArtId comment block in OotItemIcons.h for why
+// this is a separate table from kOotItemArt above.
+//
+// Sources:
+//   env/soh/soh/assets/textures/icon_item_24_static/icon_item_24_static.h  (24x24 RGBA32)
+//   env/soh/soh/assets/textures/icon_item_static/icon_item_static.h        (80x32 IA8 tiles,
+//     drawn by soh at z_kaleido_scope_PAL.c:1399/1412 as the quest page background)
+// Order must match the OotQuestArtId enum exactly.
+namespace {
+
+// clang-format off
+const char* const kOotQuestArt[OOT_QUEST_ART_MAX] = {
+    /*  0 MEDALLION_FOREST */ "textures/icon_item_24_static/gQuestIconMedallionForestTex",
+    /*  1 MEDALLION_FIRE   */ "textures/icon_item_24_static/gQuestIconMedallionFireTex",
+    /*  2 MEDALLION_WATER  */ "textures/icon_item_24_static/gQuestIconMedallionWaterTex",
+    /*  3 MEDALLION_SPIRIT */ "textures/icon_item_24_static/gQuestIconMedallionSpiritTex",
+    /*  4 MEDALLION_SHADOW */ "textures/icon_item_24_static/gQuestIconMedallionShadowTex",
+    /*  5 MEDALLION_LIGHT  */ "textures/icon_item_24_static/gQuestIconMedallionLightTex",
+    /*  6 STONE_KOKIRI     */ "textures/icon_item_24_static/gQuestIconKokiriEmeraldTex",
+    /*  7 STONE_GORON      */ "textures/icon_item_24_static/gQuestIconGoronRubyTex",
+    /*  8 STONE_ZORA       */ "textures/icon_item_24_static/gQuestIconZoraSapphireTex",
+    /*  9 STONE_OF_AGONY   */ "textures/icon_item_24_static/gQuestIconStoneOfAgonyTex",
+    /* 10 GERUDO_CARD      */ "textures/icon_item_24_static/gQuestIconGerudosCardTex",
+    /* 11 GOLD_SKULLTULA   */ "textures/icon_item_24_static/gQuestIconGoldSkulltulaTex",
+    /* 12 HEART_CONTAINER  */ "textures/icon_item_24_static/gQuestIconHeartContainerTex",
+    /* 13 HEART_PIECE      */ "textures/icon_item_24_static/gQuestIconHeartPieceTex",
+    /* 14 HEX_TILE_03      */ "textures/icon_item_static/gPauseQuestStatus03Tex",
+    /* 15 HEX_TILE_04      */ "textures/icon_item_static/gPauseQuestStatus04Tex",
+    /* 16 HEX_TILE_13      */ "textures/icon_item_static/gPauseQuestStatus13Tex",
+    /* 17 HEX_TILE_14      */ "textures/icon_item_static/gPauseQuestStatus14Tex",
+    /* 18 HEX_TILE_23      */ "textures/icon_item_static/gPauseQuestStatus23Tex",
+    /* 19 HEX_TILE_24      */ "textures/icon_item_static/gPauseQuestStatus24Tex",
+};
+// clang-format on
+
+} // namespace
+
+extern "C" const char* OotQuestArt_GetPath(int artId) {
+    if (!OotAssets::IsOotContentAvailable() || artId < 0 || artId >= OOT_QUEST_ART_MAX) {
+        return nullptr;
+    }
+    static std::array<std::string, OOT_QUEST_ART_MAX> sCache;
+    if (sCache[artId].empty()) {
+        sCache[artId] = ResolveCached(kOotQuestArt[artId]);
+    }
+    return sCache[artId].c_str();
+}

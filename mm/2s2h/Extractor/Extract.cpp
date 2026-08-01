@@ -40,6 +40,7 @@
 
 #include <stdlib.h>
 
+#include <SDL2/SDL.h>
 #include <SDL2/SDL_messagebox.h>
 
 #include <array>
@@ -71,7 +72,65 @@ enum class ButtonId : int {
     FIND,
 };
 
+// SO2H [Menu] the extractor's dialogs are the very first thing a new user sees, so they wear
+// the same copper palette as the in-game menu skin (mm/assets/custom/textures/so2h_menu) and
+// the settings UI theme (UIWidgets::Colors::So2hCopper).
+// Order is fixed by SDL: BACKGROUND, TEXT, BUTTON_BORDER, BUTTON_BACKGROUND, BUTTON_SELECTED.
+static const SDL_MessageBoxColorScheme kSo2hMessageBoxColors = {
+    { { 28, 20, 14 }, { 232, 206, 160 }, { 122, 78, 32 }, { 60, 40, 24 }, { 150, 84, 26 } }
+};
+
+/**
+ * SO2H [Menu] SDL_ShowMessageBox with the SO2H colour scheme attached.
+ *
+ * Windows previously took a separate MessageBoxA path, which cannot be themed at all - the
+ * whole point of this pass is that the theme shows up on the build target, so Windows goes
+ * through SDL too. The extractor can run before the app has initialised SDL's video
+ * subsystem, so that is brought up (ref-counted, and released again) around the call, and
+ * anything that still fails falls back to the native box rather than silently returning no
+ * answer.
+ */
+static int So2hShowMessageBox(SDL_MessageBoxData* boxData, int* buttonId) {
+    bool initedVideo = false;
+    int ret;
+
+    boxData->colorScheme = &kSo2hMessageBoxColors;
+
+    if (SDL_WasInit(SDL_INIT_VIDEO) == 0) {
+        if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+            return -1;
+        }
+        initedVideo = true;
+    }
+
+    ret = SDL_ShowMessageBox(boxData, buttonId);
+
+    if (initedVideo) {
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    }
+    return ret;
+}
+
 void Extractor::ShowErrorBox(const char* title, const char* text) {
+    SDL_MessageBoxData boxData = { 0 };
+    SDL_MessageBoxButtonData button = { 0 };
+    int ret;
+
+    button.buttonid = 0;
+    button.text = "OK";
+    button.flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT;
+
+    boxData.numbuttons = 1;
+    boxData.flags = SDL_MESSAGEBOX_ERROR;
+    boxData.message = text;
+    boxData.title = title;
+    boxData.window = nullptr;
+    boxData.buttons = &button;
+
+    if (So2hShowMessageBox(&boxData, &ret) == 0) {
+        return;
+    }
+
 #ifdef _WIN32
     MessageBoxA(nullptr, text, title, MB_OK | MB_ICONERROR);
 #else
@@ -114,7 +173,7 @@ int Extractor::ShowRomPickBox(uint32_t verCrc) const {
     boxData.numbuttons = 3;
     boxData.flags = SDL_MESSAGEBOX_INFORMATION;
     boxData.message = boxBuffer.get();
-    boxData.title = "Rom Detected";
+    boxData.title = "SO2H - ROM Detected";
     boxData.window = nullptr;
 
     boxData.buttons = buttons;
@@ -122,17 +181,18 @@ int Extractor::ShowRomPickBox(uint32_t verCrc) const {
              "Rom detected: %s, Header CRC32: %8X. It appears to be: %s. Use this rom?", mCurrentRomPath.c_str(),
              verCrc, verMap.at(verCrc));
 
-    SDL_ShowMessageBox(&boxData, &ret);
+    if (So2hShowMessageBox(&boxData, &ret) != 0) {
+        // Themed box unavailable: fall back to the plain SDL box so the user still gets asked.
+        boxData.colorScheme = nullptr;
+        SDL_ShowMessageBox(&boxData, &ret);
+    }
     return ret;
 }
 
 int Extractor::ShowYesNoBox(const char* title, const char* box) {
-    int ret;
-#ifdef _WIN32
-    ret = MessageBoxA(nullptr, box, title, MB_YESNO | MB_ICONQUESTION);
-#else
     SDL_MessageBoxData boxData = { 0 };
     SDL_MessageBoxButtonData buttons[2] = { { 0 } };
+    int ret = 0;
 
     buttons[0].buttonid = IDYES;
     buttons[0].text = "Yes";
@@ -144,10 +204,22 @@ int Extractor::ShowYesNoBox(const char* title, const char* box) {
     boxData.flags = SDL_MESSAGEBOX_INFORMATION;
     boxData.message = box;
     boxData.title = title;
+    boxData.window = nullptr;
     boxData.buttons = buttons;
+
+    // SO2H [Menu] Windows used to take an unthemeable MessageBoxA path here; it now goes
+    // through SDL like every other platform, and only falls back if SDL cannot show a box.
+    if (So2hShowMessageBox(&boxData, &ret) == 0) {
+        return ret;
+    }
+
+#ifdef _WIN32
+    return MessageBoxA(nullptr, box, title, MB_YESNO | MB_ICONQUESTION);
+#else
+    boxData.colorScheme = nullptr;
     SDL_ShowMessageBox(&boxData, &ret);
-#endif
     return ret;
+#endif
 }
 
 void Extractor::SetRomInfo(const std::string& path) {

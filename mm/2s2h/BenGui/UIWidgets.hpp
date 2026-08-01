@@ -67,7 +67,13 @@ enum Colors {
     Black,
     LightGray,
     White,
-    NoColor
+    NoColor,
+    // SO2H [Menu] theme colours. Appended AFTER NoColor on purpose: gSettings.Menu.Theme
+    // persists the raw integer, so inserting anywhere above would silently repaint every
+    // existing user's menu. These match the SO2H pause-menu skin (mm/assets/custom/textures/
+    // so2h_menu) so the settings UI and the in-game L-bar read as one piece of art.
+    So2hCopper,
+    So2hFlame
 };
 
 enum InputTypes { String, Scalar };
@@ -84,6 +90,8 @@ const std::unordered_map<Colors, ImVec4> ColorValues = {
     { Colors::Gray, ImVec4(0.45f, 0.45f, 0.45f, 1.0f) },    { Colors::DarkGray, ImVec4(0.15f, 0.15f, 0.15f, 1.0f) },
     { Colors::Black, ImVec4(0.0f, 0.0f, 0.0f, 1.0f) },      { Colors::White, ImVec4(1.0f, 1.0f, 1.0f, 1.0f) },
     { Colors::NoColor, ImVec4(0.0f, 0.0f, 0.0f, 0.0f) },
+    { Colors::So2hCopper, ImVec4(0.42f, 0.24f, 0.09f, 1.0f) },
+    { Colors::So2hFlame, ImVec4(0.72f, 0.33f, 0.08f, 1.0f) },
 };
 
 namespace Sizes {
