@@ -198,31 +198,191 @@ void KaleidoScope_DrawItemSelectOot(PlayState* play) {
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
+// Real analog-stick grid navigation for the OOT Item page, ported 1:1 from MM's own
+// KaleidoScope_UpdateItemCursor (z_kaleido_item.c) - a deliberate template match, not just a
+// convenient one: MM's native Item grid is ITEM_GRID_ROWS(4) x ITEM_GRID_COLS(6), exactly the
+// same shape as this OOT grid and the sItemMaskCursorsX(6)/sItemMaskCursorsY(4) tables the
+// cursor sprite position already reads (z_kaleido_scope_NES.c ~3368). It also already handles
+// the one behavior this page needs: a sparse grid where empty (OOT_ITEM_NONE) slots are still
+// freely selectable, unlike the Mask page which skip-searches past unowned slots.
 void KaleidoScope_UpdateItemCursorOot(PlayState* play) {
     PauseContext* pauseCtx = &play->pauseCtx;
     OotInventory* ootInventory = &gSaveContext.save.shipSaveInfo.so2h.oot.inventory;
+    u16 cursorItem;
+    s16 cursorPoint;
+    s16 cursorXIndex;
+    s16 cursorYIndex;
+    s16 moveCursorResult;
 
-    // SO2H TODO (patch 0004 polish follow-up): real analog-stick cursor movement across
-    // the grid, mirroring KaleidoScope_UpdateItemCursor's row/column search once this page
-    // needs cursor-driven interaction (item swapping, descriptions, etc). For now the
-    // cursor slot is only kept in-range so the outline highlight in
-    // KaleidoScope_DrawItemSelectOot never reads out of bounds.
+    pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_WHITE;
+    pauseCtx->nameColorSet = PAUSE_NAME_COLOR_SET_WHITE;
+
+    if ((pauseCtx->state != PAUSE_STATE_MAIN) || (pauseCtx->mainState != PAUSE_MAIN_STATE_IDLE) ||
+        (pauseCtx->pageIndex != PAUSE_ITEM_OOT) || pauseCtx->itemDescriptionOn) {
+        return;
+    }
+
+    moveCursorResult = PAUSE_CURSOR_RESULT_NONE;
+    cursorItem = pauseCtx->cursorItem[PAUSE_ITEM_OOT];
+
+    // Move cursor left/right
+    if (pauseCtx->cursorSpecialPos == 0) {
+        pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_YELLOW;
+
+        if (ABS_ALT(pauseCtx->stickAdjX) > 30) {
+            cursorPoint = pauseCtx->cursorPoint[PAUSE_ITEM_OOT];
+            cursorXIndex = pauseCtx->cursorXIndex[PAUSE_ITEM_OOT];
+            cursorYIndex = pauseCtx->cursorYIndex[PAUSE_ITEM_OOT];
+
+            while (moveCursorResult == PAUSE_CURSOR_RESULT_NONE) {
+                if (pauseCtx->stickAdjX < -30) {
+                    // move cursor left
+                    pauseCtx->cursorShrinkRate = 4.0f;
+                    if (pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] != 0) {
+                        pauseCtx->cursorXIndex[PAUSE_ITEM_OOT]--;
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT]--;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] = cursorXIndex;
+                        pauseCtx->cursorYIndex[PAUSE_ITEM_OOT]++;
+
+                        if (pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] >= ITEM_GRID_ROWS) {
+                            pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] = 0;
+                        }
+
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT] =
+                            pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] + (pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] * ITEM_GRID_COLS);
+
+                        if (pauseCtx->cursorPoint[PAUSE_ITEM_OOT] >= ITEM_NUM_SLOTS) {
+                            pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = pauseCtx->cursorXIndex[PAUSE_ITEM_OOT];
+                        }
+
+                        if (cursorYIndex == pauseCtx->cursorYIndex[PAUSE_ITEM_OOT]) {
+                            pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] = cursorXIndex;
+                            pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = cursorPoint;
+
+                            KaleidoScope_MoveCursorToSpecialPos(play, PAUSE_CURSOR_PAGE_LEFT);
+
+                            moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                        }
+                    }
+                } else if (pauseCtx->stickAdjX > 30) {
+                    // move cursor right
+                    pauseCtx->cursorShrinkRate = 4.0f;
+                    if (pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] < (ITEM_GRID_COLS - 1)) {
+                        pauseCtx->cursorXIndex[PAUSE_ITEM_OOT]++;
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT]++;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] = cursorXIndex;
+                        pauseCtx->cursorYIndex[PAUSE_ITEM_OOT]++;
+
+                        if (pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] >= ITEM_GRID_ROWS) {
+                            pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] = 0;
+                        }
+
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT] =
+                            pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] + (pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] * ITEM_GRID_COLS);
+
+                        if (pauseCtx->cursorPoint[PAUSE_ITEM_OOT] >= ITEM_NUM_SLOTS) {
+                            pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = pauseCtx->cursorXIndex[PAUSE_ITEM_OOT];
+                        }
+
+                        if (cursorYIndex == pauseCtx->cursorYIndex[PAUSE_ITEM_OOT]) {
+                            pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] = cursorXIndex;
+                            pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = cursorPoint;
+
+                            KaleidoScope_MoveCursorToSpecialPos(play, PAUSE_CURSOR_PAGE_RIGHT);
+
+                            moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                        }
+                    }
+                }
+            }
+
+            if (moveCursorResult == PAUSE_CURSOR_RESULT_SLOT) {
+                cursorItem = ootInventory->items[pauseCtx->cursorPoint[PAUSE_ITEM_OOT]];
+            }
+        }
+    } else if (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) {
+        if (pauseCtx->stickAdjX > 30) {
+            KaleidoScope_MoveCursorFromSpecialPos(play);
+            pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] = 0;
+            pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] = 0;
+            pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = 0;
+        }
+    } else { // PAUSE_CURSOR_PAGE_RIGHT
+        if (pauseCtx->stickAdjX < -30) {
+            KaleidoScope_MoveCursorFromSpecialPos(play);
+            pauseCtx->cursorXIndex[PAUSE_ITEM_OOT] = ITEM_GRID_COLS - 1;
+            pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] = 0;
+            pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = ITEM_GRID_COLS - 1;
+        }
+    }
+
+    if (pauseCtx->cursorSpecialPos == 0) {
+        // Move cursor up/down
+        if (ABS_ALT(pauseCtx->stickAdjY) > 30) {
+            moveCursorResult = PAUSE_CURSOR_RESULT_NONE;
+
+            cursorPoint = pauseCtx->cursorPoint[PAUSE_ITEM_OOT];
+            cursorYIndex = pauseCtx->cursorYIndex[PAUSE_ITEM_OOT];
+
+            while (moveCursorResult == PAUSE_CURSOR_RESULT_NONE) {
+                if (pauseCtx->stickAdjY > 30) {
+                    // move cursor up
+                    moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                    if (pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] != 0) {
+                        pauseCtx->cursorYIndex[PAUSE_ITEM_OOT]--;
+                        pauseCtx->cursorShrinkRate = 4.0f;
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT] -= ITEM_GRID_COLS;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] = cursorYIndex;
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = cursorPoint;
+                    }
+                } else if (pauseCtx->stickAdjY < -30) {
+                    // move cursor down
+                    moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                    if (pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] < (ITEM_GRID_ROWS - 1)) {
+                        pauseCtx->cursorYIndex[PAUSE_ITEM_OOT]++;
+                        pauseCtx->cursorShrinkRate = 4.0f;
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT] += ITEM_GRID_COLS;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorYIndex[PAUSE_ITEM_OOT] = cursorYIndex;
+                        pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = cursorPoint;
+                    }
+                }
+            }
+
+            pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_YELLOW;
+
+            if ((moveCursorResult == PAUSE_CURSOR_RESULT_SLOT) || (moveCursorResult != PAUSE_CURSOR_RESULT_SPECIAL_POS)) {
+                cursorItem = ootInventory->items[pauseCtx->cursorPoint[PAUSE_ITEM_OOT]];
+            }
+        }
+    }
+
+    // Keep the existing highlight/draw code (KaleidoScope_DrawItemSelectOot) working unchanged -
+    // it still reads the static slot index rather than pauseCtx->cursorPoint directly.
+    sItemOotCursorSlot = pauseCtx->cursorPoint[PAUSE_ITEM_OOT];
     if (sItemOotCursorSlot < 0) {
         sItemOotCursorSlot = 0;
     } else if (sItemOotCursorSlot >= ITEM_NUM_SLOTS) {
         sItemOotCursorSlot = ITEM_NUM_SLOTS - 1;
     }
+    pauseCtx->cursorPoint[PAUSE_ITEM_OOT] = sItemOotCursorSlot;
 
     // Feeds KaleidoScope_UpdateNamePanel's generic `cursorItem[pageIndex]` check so the shared
     // MM info-panel draw shows this slot's real OOT item name (via Kaleido_LoadItemNameStaticOot).
-    if (ootInventory->items[sItemOotCursorSlot] == OOT_ITEM_NONE) {
+    cursorItem = ootInventory->items[sItemOotCursorSlot];
+    if (cursorItem == OOT_ITEM_NONE) {
         pauseCtx->cursorItem[PAUSE_ITEM_OOT] = PAUSE_ITEM_NONE;
+        pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_WHITE;
     } else {
-        pauseCtx->cursorItem[PAUSE_ITEM_OOT] = ootInventory->items[sItemOotCursorSlot];
+        pauseCtx->cursorItem[PAUSE_ITEM_OOT] = cursorItem;
     }
-
-    pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_WHITE;
-    pauseCtx->nameColorSet = PAUSE_NAME_COLOR_SET_WHITE;
 }
 
 void KaleidoScope_DrawEquipmentOot(PlayState* play) {
@@ -271,20 +431,180 @@ void KaleidoScope_DrawEquipmentOot(PlayState* play) {
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
+// Real analog-stick grid navigation for the OOT Equip page. Same shape as
+// KaleidoScope_UpdateItemCursorOot above (itself ported from MM's KaleidoScope_UpdateItemCursor),
+// just re-parameterized for this page's EQUIP_OOT_GRID_ROWS(4) x EQUIP_OOT_GRID_COLS(4) grid.
+// Deliberately free movement (cursor can land on unowned tiers), matching the Item page's
+// philosophy rather than the Mask page's skip-search-past-unowned-slots one: there is still no
+// A-button equip/unequip interaction on this page (that's future scope per the original TODO,
+// pending the Link-doll preview render), so skip-searching only matters once that interaction
+// exists. NOTE (known, deliberate scope cut - not fixed here): the cursor sprite's screen
+// position (z_kaleido_scope_NES.c ~3375) reuses sItemMaskCursorsX[], a 6-entry table tuned for
+// the 6-wide Item/Mask grids, indexed here by a 0-3 column - so the diamond cursor sprite may
+// not sit perfectly concentric with this page's (correctly 4-wide-spaced) equipOotVtx grid
+// cells. Fixing that means adding a dedicated 4-entry cursor position table wired into that
+// switch statement, which is a draw-side change outside "make the cursor move".
 void KaleidoScope_UpdateEquipCursorOot(PlayState* play) {
     PauseContext* pauseCtx = &play->pauseCtx;
     OotInventory* ootInventory = &gSaveContext.save.shipSaveInfo.so2h.oot.inventory;
     s32 row;
     s32 col;
+    u16 cursorItem;
+    s16 cursorPoint;
+    s16 cursorXIndex;
+    s16 cursorYIndex;
+    s16 moveCursorResult;
 
-    // SO2H TODO (patch 0005 polish follow-up): real analog-stick cursor movement +
-    // equip/unequip interaction, mirroring KaleidoScope_UpdateMaskCursor's structure,
-    // once the Link-doll render (out of scope this pass) exists to preview the result.
+    pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_WHITE;
+    pauseCtx->nameColorSet = PAUSE_NAME_COLOR_SET_WHITE;
+
+    if ((pauseCtx->state != PAUSE_STATE_MAIN) || (pauseCtx->mainState != PAUSE_MAIN_STATE_IDLE) ||
+        (pauseCtx->pageIndex != PAUSE_EQUIP_OOT) || pauseCtx->itemDescriptionOn) {
+        return;
+    }
+
+    moveCursorResult = PAUSE_CURSOR_RESULT_NONE;
+
+    // Move cursor left/right
+    if (pauseCtx->cursorSpecialPos == 0) {
+        pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_YELLOW;
+
+        if (ABS_ALT(pauseCtx->stickAdjX) > 30) {
+            cursorPoint = pauseCtx->cursorPoint[PAUSE_EQUIP_OOT];
+            cursorXIndex = pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT];
+            cursorYIndex = pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT];
+
+            while (moveCursorResult == PAUSE_CURSOR_RESULT_NONE) {
+                if (pauseCtx->stickAdjX < -30) {
+                    // move cursor left
+                    pauseCtx->cursorShrinkRate = 4.0f;
+                    if (pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] != 0) {
+                        pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT]--;
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT]--;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] = cursorXIndex;
+                        pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT]++;
+
+                        if (pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] >= EQUIP_OOT_GRID_ROWS) {
+                            pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] = 0;
+                        }
+
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] +
+                                                                  (pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] * EQUIP_OOT_GRID_COLS);
+
+                        if (pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] >= EQUIP_OOT_NUM_SLOTS) {
+                            pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT];
+                        }
+
+                        if (cursorYIndex == pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT]) {
+                            pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] = cursorXIndex;
+                            pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = cursorPoint;
+
+                            KaleidoScope_MoveCursorToSpecialPos(play, PAUSE_CURSOR_PAGE_LEFT);
+
+                            moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                        }
+                    }
+                } else if (pauseCtx->stickAdjX > 30) {
+                    // move cursor right
+                    pauseCtx->cursorShrinkRate = 4.0f;
+                    if (pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] < (EQUIP_OOT_GRID_COLS - 1)) {
+                        pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT]++;
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT]++;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] = cursorXIndex;
+                        pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT]++;
+
+                        if (pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] >= EQUIP_OOT_GRID_ROWS) {
+                            pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] = 0;
+                        }
+
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] +
+                                                                  (pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] * EQUIP_OOT_GRID_COLS);
+
+                        if (pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] >= EQUIP_OOT_NUM_SLOTS) {
+                            pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT];
+                        }
+
+                        if (cursorYIndex == pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT]) {
+                            pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] = cursorXIndex;
+                            pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = cursorPoint;
+
+                            KaleidoScope_MoveCursorToSpecialPos(play, PAUSE_CURSOR_PAGE_RIGHT);
+
+                            moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                        }
+                    }
+                }
+            }
+        }
+    } else if (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) {
+        if (pauseCtx->stickAdjX > 30) {
+            KaleidoScope_MoveCursorFromSpecialPos(play);
+            pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] = 0;
+            pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] = 0;
+            pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = 0;
+        }
+    } else { // PAUSE_CURSOR_PAGE_RIGHT
+        if (pauseCtx->stickAdjX < -30) {
+            KaleidoScope_MoveCursorFromSpecialPos(play);
+            pauseCtx->cursorXIndex[PAUSE_EQUIP_OOT] = EQUIP_OOT_GRID_COLS - 1;
+            pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] = 0;
+            pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = EQUIP_OOT_GRID_COLS - 1;
+        }
+    }
+
+    if (pauseCtx->cursorSpecialPos == 0) {
+        // Move cursor up/down
+        if (ABS_ALT(pauseCtx->stickAdjY) > 30) {
+            moveCursorResult = PAUSE_CURSOR_RESULT_NONE;
+
+            cursorPoint = pauseCtx->cursorPoint[PAUSE_EQUIP_OOT];
+            cursorYIndex = pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT];
+
+            while (moveCursorResult == PAUSE_CURSOR_RESULT_NONE) {
+                if (pauseCtx->stickAdjY > 30) {
+                    // move cursor up
+                    moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                    if (pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] != 0) {
+                        pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT]--;
+                        pauseCtx->cursorShrinkRate = 4.0f;
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] -= EQUIP_OOT_GRID_COLS;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] = cursorYIndex;
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = cursorPoint;
+                    }
+                } else if (pauseCtx->stickAdjY < -30) {
+                    // move cursor down
+                    moveCursorResult = PAUSE_CURSOR_RESULT_SPECIAL_POS;
+                    if (pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] < (EQUIP_OOT_GRID_ROWS - 1)) {
+                        pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT]++;
+                        pauseCtx->cursorShrinkRate = 4.0f;
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] += EQUIP_OOT_GRID_COLS;
+                        moveCursorResult = PAUSE_CURSOR_RESULT_SLOT;
+                    } else {
+                        pauseCtx->cursorYIndex[PAUSE_EQUIP_OOT] = cursorYIndex;
+                        pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = cursorPoint;
+                    }
+                }
+            }
+
+            pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_YELLOW;
+        }
+    }
+
+    // Keep the existing highlight/draw code (KaleidoScope_DrawEquipmentOot) working unchanged -
+    // it still reads the static slot index rather than pauseCtx->cursorPoint directly.
+    sEquipOotCursorSlot = pauseCtx->cursorPoint[PAUSE_EQUIP_OOT];
     if (sEquipOotCursorSlot < 0) {
         sEquipOotCursorSlot = 0;
     } else if (sEquipOotCursorSlot >= EQUIP_OOT_NUM_SLOTS) {
         sEquipOotCursorSlot = EQUIP_OOT_NUM_SLOTS - 1;
     }
+    pauseCtx->cursorPoint[PAUSE_EQUIP_OOT] = sEquipOotCursorSlot;
 
     row = sEquipOotCursorSlot / EQUIP_OOT_GRID_COLS;
     col = sEquipOotCursorSlot % EQUIP_OOT_GRID_COLS;
@@ -292,11 +612,9 @@ void KaleidoScope_UpdateEquipCursorOot(PlayState* play) {
     // Same generic name-panel feed as the item page, but encoding an (equipType, tier) pair
     // instead of a raw ItemID (see OOT_EQUIP_ENCODE above).
     if (((ootInventory->equipment >> (row * 4)) & 0xF) & (1 << col)) {
-        pauseCtx->cursorItem[PAUSE_EQUIP_OOT] = OOT_EQUIP_ENCODE(row, col + 1);
+        cursorItem = OOT_EQUIP_ENCODE(row, col + 1);
+        pauseCtx->cursorItem[PAUSE_EQUIP_OOT] = cursorItem;
     } else {
         pauseCtx->cursorItem[PAUSE_EQUIP_OOT] = PAUSE_ITEM_NONE;
     }
-
-    pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_WHITE;
-    pauseCtx->nameColorSet = PAUSE_NAME_COLOR_SET_WHITE;
 }
