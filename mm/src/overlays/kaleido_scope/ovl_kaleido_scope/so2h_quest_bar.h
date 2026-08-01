@@ -32,10 +32,13 @@
  * interactive, and song names are not rendered yet.
  */
 
-// Placeholder art regions. Everything the bar draws is a flat colour quad or an existing
-// icon texture; no new assets go through the OTR pipeline in this pass. The three regions
-// below are the seams where real border art will drop in later:
-//   A = bottom arm border, B = right arm border, C = bottom-right corner.
+// Art. The three regions are now drawn as nine-slice panels built from the SO2H menu skin
+// (mm/assets/custom/textures/so2h_menu, sliced by tools/so2h_slice_menu_sheet.py and shipped
+// in 2ship.o2r), not flat colour quads:
+//   A = bottom arm (song staves), B = right arm (quest slots), C = bottom-right corner,
+//   which is the dedicated song preview window (clef + staff + the highlighted song's note).
+// Remaining flat quads: the OoT medallion / spiritual stone swatches, which still have no
+// icon art in icon_item_static, and the arm cursor outline.
 
 void So2h_QuestBar_Reset(void);
 

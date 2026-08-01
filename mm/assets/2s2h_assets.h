@@ -409,3 +409,136 @@ static const ALIGN_ASSET(2) char gOcarinaCRightButtonDL[] = dgOcarinaCRightButto
 
 #define dgOcarinaCUpButtonDL "__OTR__objects/object_ocarina_c_up_button/gOcarinaCUpButtonDL"
 static const ALIGN_ASSET(2) char gOcarinaCUpButtonDL[] = dgOcarinaCUpButtonDL;
+
+// SO2H menu skin. Sliced from the OOT/MM-style GUI sheet by tools/so2h_slice_menu_sheet.py
+// on the sheet's native 35 px grid (70 px for the 2x2 pieces), never rescaled, shipped as
+// RGBA32 through mm/assets/custom/textures/so2h_menu into 2ship.o2r.
+
+#define dgSo2hBtnA "__OTR__textures/so2h_menu/gSo2hBtnA"
+static const ALIGN_ASSET(2) char gSo2hBtnATex[] = dgSo2hBtnA;
+
+#define dgSo2hBtnArrowDown "__OTR__textures/so2h_menu/gSo2hBtnArrowDown"
+static const ALIGN_ASSET(2) char gSo2hBtnArrowDownTex[] = dgSo2hBtnArrowDown;
+
+#define dgSo2hBtnArrowLeft "__OTR__textures/so2h_menu/gSo2hBtnArrowLeft"
+static const ALIGN_ASSET(2) char gSo2hBtnArrowLeftTex[] = dgSo2hBtnArrowLeft;
+
+#define dgSo2hBtnArrowRight "__OTR__textures/so2h_menu/gSo2hBtnArrowRight"
+static const ALIGN_ASSET(2) char gSo2hBtnArrowRightTex[] = dgSo2hBtnArrowRight;
+
+#define dgSo2hBtnArrowUp "__OTR__textures/so2h_menu/gSo2hBtnArrowUp"
+static const ALIGN_ASSET(2) char gSo2hBtnArrowUpTex[] = dgSo2hBtnArrowUp;
+
+#define dgSo2hBtnB "__OTR__textures/so2h_menu/gSo2hBtnB"
+static const ALIGN_ASSET(2) char gSo2hBtnBTex[] = dgSo2hBtnB;
+
+#define dgSo2hBtnCDown "__OTR__textures/so2h_menu/gSo2hBtnCDown"
+static const ALIGN_ASSET(2) char gSo2hBtnCDownTex[] = dgSo2hBtnCDown;
+
+#define dgSo2hBtnCLeft "__OTR__textures/so2h_menu/gSo2hBtnCLeft"
+static const ALIGN_ASSET(2) char gSo2hBtnCLeftTex[] = dgSo2hBtnCLeft;
+
+#define dgSo2hBtnCRight "__OTR__textures/so2h_menu/gSo2hBtnCRight"
+static const ALIGN_ASSET(2) char gSo2hBtnCRightTex[] = dgSo2hBtnCRight;
+
+#define dgSo2hBtnCUp "__OTR__textures/so2h_menu/gSo2hBtnCUp"
+static const ALIGN_ASSET(2) char gSo2hBtnCUpTex[] = dgSo2hBtnCUp;
+
+#define dgSo2hBtnCircle "__OTR__textures/so2h_menu/gSo2hBtnCircle"
+static const ALIGN_ASSET(2) char gSo2hBtnCircleTex[] = dgSo2hBtnCircle;
+
+#define dgSo2hBtnCross "__OTR__textures/so2h_menu/gSo2hBtnCross"
+static const ALIGN_ASSET(2) char gSo2hBtnCrossTex[] = dgSo2hBtnCross;
+
+#define dgSo2hCellTile "__OTR__textures/so2h_menu/gSo2hCellTile"
+static const ALIGN_ASSET(2) char gSo2hCellTileTex[] = dgSo2hCellTile;
+
+#define dgSo2hCrossRed "__OTR__textures/so2h_menu/gSo2hCrossRed"
+static const ALIGN_ASSET(2) char gSo2hCrossRedTex[] = dgSo2hCrossRed;
+
+#define dgSo2hFrameBL "__OTR__textures/so2h_menu/gSo2hFrameBL"
+static const ALIGN_ASSET(2) char gSo2hFrameBLTex[] = dgSo2hFrameBL;
+
+#define dgSo2hFrameBR "__OTR__textures/so2h_menu/gSo2hFrameBR"
+static const ALIGN_ASSET(2) char gSo2hFrameBRTex[] = dgSo2hFrameBR;
+
+#define dgSo2hFrameBottom "__OTR__textures/so2h_menu/gSo2hFrameBottom"
+static const ALIGN_ASSET(2) char gSo2hFrameBottomTex[] = dgSo2hFrameBottom;
+
+#define dgSo2hFrameFill "__OTR__textures/so2h_menu/gSo2hFrameFill"
+static const ALIGN_ASSET(2) char gSo2hFrameFillTex[] = dgSo2hFrameFill;
+
+#define dgSo2hFrameLeft "__OTR__textures/so2h_menu/gSo2hFrameLeft"
+static const ALIGN_ASSET(2) char gSo2hFrameLeftTex[] = dgSo2hFrameLeft;
+
+#define dgSo2hFrameRight "__OTR__textures/so2h_menu/gSo2hFrameRight"
+static const ALIGN_ASSET(2) char gSo2hFrameRightTex[] = dgSo2hFrameRight;
+
+#define dgSo2hFrameTL "__OTR__textures/so2h_menu/gSo2hFrameTL"
+static const ALIGN_ASSET(2) char gSo2hFrameTLTex[] = dgSo2hFrameTL;
+
+#define dgSo2hFrameTR "__OTR__textures/so2h_menu/gSo2hFrameTR"
+static const ALIGN_ASSET(2) char gSo2hFrameTRTex[] = dgSo2hFrameTR;
+
+#define dgSo2hFrameTop "__OTR__textures/so2h_menu/gSo2hFrameTop"
+static const ALIGN_ASSET(2) char gSo2hFrameTopTex[] = dgSo2hFrameTop;
+
+#define dgSo2hMarkPawnCyan "__OTR__textures/so2h_menu/gSo2hMarkPawnCyan"
+static const ALIGN_ASSET(2) char gSo2hMarkPawnCyanTex[] = dgSo2hMarkPawnCyan;
+
+#define dgSo2hMarkPawnCyanX "__OTR__textures/so2h_menu/gSo2hMarkPawnCyanX"
+static const ALIGN_ASSET(2) char gSo2hMarkPawnCyanXTex[] = dgSo2hMarkPawnCyanX;
+
+#define dgSo2hMarkPawnDark "__OTR__textures/so2h_menu/gSo2hMarkPawnDark"
+static const ALIGN_ASSET(2) char gSo2hMarkPawnDarkTex[] = dgSo2hMarkPawnDark;
+
+#define dgSo2hMarkPawnLight "__OTR__textures/so2h_menu/gSo2hMarkPawnLight"
+static const ALIGN_ASSET(2) char gSo2hMarkPawnLightTex[] = dgSo2hMarkPawnLight;
+
+#define dgSo2hMarkT "__OTR__textures/so2h_menu/gSo2hMarkT"
+static const ALIGN_ASSET(2) char gSo2hMarkTTex[] = dgSo2hMarkT;
+
+#define dgSo2hMarkTriDark "__OTR__textures/so2h_menu/gSo2hMarkTriDark"
+static const ALIGN_ASSET(2) char gSo2hMarkTriDarkTex[] = dgSo2hMarkTriDark;
+
+#define dgSo2hMarkTriGold "__OTR__textures/so2h_menu/gSo2hMarkTriGold"
+static const ALIGN_ASSET(2) char gSo2hMarkTriGoldTex[] = dgSo2hMarkTriGold;
+
+#define dgSo2hMarkVs "__OTR__textures/so2h_menu/gSo2hMarkVs"
+static const ALIGN_ASSET(2) char gSo2hMarkVsTex[] = dgSo2hMarkVs;
+
+#define dgSo2hNoteBlack "__OTR__textures/so2h_menu/gSo2hNoteBlack"
+static const ALIGN_ASSET(2) char gSo2hNoteBlackTex[] = dgSo2hNoteBlack;
+
+#define dgSo2hNoteBlue "__OTR__textures/so2h_menu/gSo2hNoteBlue"
+static const ALIGN_ASSET(2) char gSo2hNoteBlueTex[] = dgSo2hNoteBlue;
+
+#define dgSo2hNoteLocked "__OTR__textures/so2h_menu/gSo2hNoteLocked"
+static const ALIGN_ASSET(2) char gSo2hNoteLockedTex[] = dgSo2hNoteLocked;
+
+#define dgSo2hNoteWhite "__OTR__textures/so2h_menu/gSo2hNoteWhite"
+static const ALIGN_ASSET(2) char gSo2hNoteWhiteTex[] = dgSo2hNoteWhite;
+
+#define dgSo2hRoundTile "__OTR__textures/so2h_menu/gSo2hRoundTile"
+static const ALIGN_ASSET(2) char gSo2hRoundTileTex[] = dgSo2hRoundTile;
+
+#define dgSo2hSlotDark "__OTR__textures/so2h_menu/gSo2hSlotDark"
+static const ALIGN_ASSET(2) char gSo2hSlotDarkTex[] = dgSo2hSlotDark;
+
+#define dgSo2hSlotHatch "__OTR__textures/so2h_menu/gSo2hSlotHatch"
+static const ALIGN_ASSET(2) char gSo2hSlotHatchTex[] = dgSo2hSlotHatch;
+
+#define dgSo2hSlotLight "__OTR__textures/so2h_menu/gSo2hSlotLight"
+static const ALIGN_ASSET(2) char gSo2hSlotLightTex[] = dgSo2hSlotLight;
+
+#define dgSo2hSlotRecess "__OTR__textures/so2h_menu/gSo2hSlotRecess"
+static const ALIGN_ASSET(2) char gSo2hSlotRecessTex[] = dgSo2hSlotRecess;
+
+#define dgSo2hStaffClef "__OTR__textures/so2h_menu/gSo2hStaffClef"
+static const ALIGN_ASSET(2) char gSo2hStaffClefTex[] = dgSo2hStaffClef;
+
+#define dgSo2hStaffLines "__OTR__textures/so2h_menu/gSo2hStaffLines"
+static const ALIGN_ASSET(2) char gSo2hStaffLinesTex[] = dgSo2hStaffLines;
+
+#define dgSo2hWindow "__OTR__textures/so2h_menu/gSo2hWindow"
+static const ALIGN_ASSET(2) char gSo2hWindowTex[] = dgSo2hWindow;

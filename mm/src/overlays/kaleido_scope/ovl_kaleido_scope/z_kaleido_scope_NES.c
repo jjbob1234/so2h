@@ -846,6 +846,12 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
         // the focused page now looks too small/distant.
 #define SO2H_HEX_DEPTH (-160.0f)
 #define SO2H_HEX_SCALE (0.78f)
+// The cursor is NOT drawn in page space - it lives on its own vanilla plane at z = -50.0f with
+// an identity scale, and that plane was tuned against pages sitting at z = -93.0f. Pushing the
+// pages back to SO2H_HEX_DEPTH shrank everything on them by (93 / 160) in apparent size, so the
+// cursor plane needs the exact same correction factor applied to both its positions and its
+// scale to keep lining up with the page icons. Derived from SO2H_HEX_DEPTH so it retunes itself.
+#define SO2H_CURSOR_ADJ (93.0f / -(SO2H_HEX_DEPTH))
         if ((pauseCtx->pageIndex != PAUSE_ITEM) && (pauseCtx->pageIndex != PAUSE_QUEST)) {
             gDPPipeSync(POLY_OPA_DISP++);
 
@@ -3570,18 +3576,16 @@ void KaleidoScope_DrawCursor(PlayState* play) {
         gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, sCursorPrimR, sCursorPrimG, sCursorPrimB, 255);
         gDPSetEnvColor(POLY_OPA_DISP++, sCursorEnvR, sCursorEnvG, sCursorEnvB, 255);
 
-        // SO2H FIX (folded in with the pause window work): the cursor built its own fresh
-        // MTXMODE_NEW matrix at the vanilla cube's z = -50.0f with an identity scale, while
-        // every hexagon page is drawn at SO2H_HEX_DEPTH with SO2H_HEX_SCALE. That mismatch is
-        // why the cursor sat at a different apparent depth and size from the page it was
-        // supposed to be sitting on, and it got worse once the whole scene was pushed into
-        // the shrunken window. Derived from the same two constants as the pages now, so the
-        // cursor tracks the page geometry automatically if those are ever retuned.
-        // The per-circle offsets below stay in the page's local space and are therefore
-        // applied at zero additional depth rather than re-adding the old -50.0f.
-        Matrix_Translate(pauseCtx->cursorX * SO2H_HEX_SCALE, pauseCtx->cursorY * SO2H_HEX_SCALE, SO2H_HEX_DEPTH,
+        // SO2H FIX: the previous attempt moved the cursor onto the page plane itself
+        // (SO2H_HEX_DEPTH / SO2H_HEX_SCALE). That was wrong - the cursor plane and the page
+        // plane are two different coordinate spaces (cursor space is ~0.42x page space, which
+        // is why a cursorWidth of 15 frames a 32-unit page icon), so moving it there made the
+        // cursor ~4x too small and collapsed its positions toward the centre.
+        // Correct fix: stay on the vanilla cursor plane at z = -50.0f and apply the single
+        // apparent-size correction caused by pages moving -93 -> SO2H_HEX_DEPTH.
+        Matrix_Translate(pauseCtx->cursorX * SO2H_CURSOR_ADJ, pauseCtx->cursorY * SO2H_CURSOR_ADJ, -50.0f,
                          MTXMODE_NEW);
-        Matrix_Scale(SO2H_HEX_SCALE, SO2H_HEX_SCALE, SO2H_HEX_SCALE, MTXMODE_APPLY);
+        Matrix_Scale(SO2H_CURSOR_ADJ, SO2H_CURSOR_ADJ, SO2H_CURSOR_ADJ, MTXMODE_APPLY);
 
         for (i = 0; i < 4; i++) {
             Matrix_Push();

@@ -10,6 +10,7 @@
 #include "BenPort.h"
 #include "interface/parameter_static/parameter_static.h"
 #include "archives/icon_item_static/icon_item_static_yar.h"
+#include "assets/2s2h_assets.h"
 
 // 2S2H [Port] the digit textures were made global specifically so the kaleido files could
 // reach them (see the comment above sCounterTextures in z_parameter.c).
@@ -42,12 +43,30 @@ extern const char* sCounterTextures[];
 #define BOTTOM_ARM_CELL_W 30
 #define BOTTOM_ARM_CELL_H 30
 
-// Placeholder art regions (see header). Distinct colours so the three seams where real
-// border art will later drop in are obvious on screen.
-static u8 sBarRegionRightArm[3] = { 46, 38, 30 };  // region B
-static u8 sBarRegionBottomArm[3] = { 38, 32, 46 }; // region A
-static u8 sBarRegionCorner[3] = { 58, 44, 26 };    // region C
-static u8 sBarCellBg[3] = { 20, 18, 16 };
+// --- Menu skin geometry ---------------------------------------------------------------
+// The art is sliced from the OOT/MM GUI sheet by tools/so2h_slice_menu_sheet.py on its
+// native 35 px grid (70 px for the 2x2 pieces); the source sizes below must match what
+// that script writes out. Every piece is RGBA32 - this is a PC build, the N64 4 KiB TMEM
+// ceiling that would have forced 32x32 / IA8 does not apply here.
+#define SKIN_FRAME_CORNER_TEX 52 // gSo2hFrameTL/TR/BL/BR are 52x52
+#define SKIN_FRAME_RUN_TEX 35    // the edge strips are a 35 px run across the 52 px band
+#define SKIN_CELL_TEX 70         // gSo2hCellTile / gSo2hRoundTile / gSo2hSlotRecess
+#define SKIN_GLYPH_TEX 35        // every single-cell glyph
+#define SKIN_STAFF_TEX 70        // gSo2hStaffLines
+#define SKIN_CLEF_W_TEX 35
+#define SKIN_CLEF_H_TEX 70
+
+// On-screen corner size of a drawn panel, in N64 320x240 space. The source corners are 52
+// px of a 295 px wide authored panel; the bar's panels are far smaller than that, so the
+// corners are scaled down rather than eating the whole panel.
+#define PANEL_CORNER 12
+
+// Bottom-right corner: the dedicated song preview window.
+#define PREVIEW_X0 BAR_SPLIT_X
+#define PREVIEW_Y0 BAR_SPLIT_Y
+#define PREVIEW_X1 SCREEN_WIDTH
+#define PREVIEW_Y1 SCREEN_HEIGHT
+
 
 // Right arm cell indices. Order is fixed by the approved plan.
 typedef enum So2hQuestBarCell {
@@ -310,6 +329,68 @@ static Gfx* So2h_DrawTexRectRGBA32(Gfx* gfx, TexturePtr texture, s16 textureWidt
     return gfx;
 }
 
+/**
+ * RGBA32 texture rectangle given N64-space edges instead of a width/height, with both edges
+ * pushed through So2h_MapX. Passing a screen width next to a mapped left edge (as the icon
+ * path does for its small square icons) silently breaks on widescreen for anything wide, so
+ * every piece of the skin goes through this.
+ */
+static Gfx* So2h_DrawSkinRect(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, s16 x0, s16 y0, s16 x1, s16 y1) {
+    s16 left = So2h_MapX(x0);
+    s16 right = So2h_MapX(x1);
+
+    if ((right <= left) || (y1 <= y0)) {
+        return gfx;
+    }
+    return So2h_DrawTexRectRGBA32(gfx, texture, texW, texH, left, y0, right - left, y1 - y0);
+}
+
+static Gfx* So2h_SetupSkinMode(Gfx* gfx, u8 alpha) {
+    gDPPipeSync(gfx++);
+    gDPSetCombineMode(gfx++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
+    gDPSetPrimColor(gfx++, 0, 0, 255, 255, 255, alpha);
+
+    return gfx;
+}
+
+/**
+ * Nine-slice panel built from the sheet's frame pieces: the recessed fill is stretched over
+ * the whole rect first, then the four edge runs, then the four corners on top. Drawing the
+ * fill under everything means no seam can show between the slices even when the panel is
+ * scaled to an odd size.
+ */
+static Gfx* So2h_DrawPanel(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, u8 alpha) {
+    s16 c = PANEL_CORNER;
+
+    if (((x1 - x0) < (c * 2)) || ((y1 - y0) < (c * 2))) {
+        c = ((x1 - x0) < (y1 - y0) ? (x1 - x0) : (y1 - y0)) / 2;
+    }
+
+    gfx = So2h_SetupSkinMode(gfx, alpha);
+
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameFillTex, SKIN_FRAME_RUN_TEX, SKIN_FRAME_RUN_TEX, x0, y0, x1, y1);
+
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameTopTex, SKIN_FRAME_RUN_TEX, SKIN_FRAME_CORNER_TEX, x0 + c, y0,
+                            x1 - c, y0 + c);
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameBottomTex, SKIN_FRAME_RUN_TEX, SKIN_FRAME_CORNER_TEX, x0 + c,
+                            y1 - c, x1 - c, y1);
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameLeftTex, SKIN_FRAME_CORNER_TEX, SKIN_FRAME_RUN_TEX, x0, y0 + c,
+                            x0 + c, y1 - c);
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameRightTex, SKIN_FRAME_CORNER_TEX, SKIN_FRAME_RUN_TEX, x1 - c,
+                            y0 + c, x1, y1 - c);
+
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameTLTex, SKIN_FRAME_CORNER_TEX, SKIN_FRAME_CORNER_TEX, x0, y0,
+                            x0 + c, y0 + c);
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameTRTex, SKIN_FRAME_CORNER_TEX, SKIN_FRAME_CORNER_TEX, x1 - c, y0,
+                            x1, y0 + c);
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameBLTex, SKIN_FRAME_CORNER_TEX, SKIN_FRAME_CORNER_TEX, x0, y1 - c,
+                            x0 + c, y1);
+    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hFrameBRTex, SKIN_FRAME_CORNER_TEX, SKIN_FRAME_CORNER_TEX, x1 - c,
+                            y1 - c, x1, y1);
+
+    return gfx;
+}
+
 static Gfx* So2h_SetupIconMode(Gfx* gfx, u8 alpha) {
     gDPPipeSync(gfx++);
     gDPSetCombineMode(gfx++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
@@ -415,15 +496,13 @@ void So2h_QuestBar_Draw(PlayState* play) {
     gDPSetAlphaCompare(gfx++, G_AC_NONE);
     gDPSetTextureFilter(gfx++, G_TF_BILERP);
 
-    // --- Placeholder art region B: right arm panel ---
-    gfx = So2h_FillRect(gfx, BAR_SPLIT_X + slideX, 0, SCREEN_WIDTH + slideX, BAR_SPLIT_Y, sBarRegionRightArm[0],
-                        sBarRegionRightArm[1], sBarRegionRightArm[2], alpha);
-    // --- Placeholder art region A: bottom arm panel ---
-    gfx = So2h_FillRect(gfx, 0, BAR_SPLIT_Y + slideY, BAR_SPLIT_X, SCREEN_HEIGHT + slideY, sBarRegionBottomArm[0],
-                        sBarRegionBottomArm[1], sBarRegionBottomArm[2], alpha);
-    // --- Placeholder art region C: bottom-right corner ---
-    gfx = So2h_FillRect(gfx, BAR_SPLIT_X + slideX, BAR_SPLIT_Y + slideY, SCREEN_WIDTH + slideX,
-                        SCREEN_HEIGHT + slideY, sBarRegionCorner[0], sBarRegionCorner[1], sBarRegionCorner[2], alpha);
+    // --- Region B: right arm panel ---
+    gfx = So2h_DrawPanel(gfx, BAR_SPLIT_X + slideX, 0, SCREEN_WIDTH + slideX, BAR_SPLIT_Y, alpha);
+    // --- Region A: bottom arm panel ---
+    gfx = So2h_DrawPanel(gfx, 0, BAR_SPLIT_Y + slideY, BAR_SPLIT_X, SCREEN_HEIGHT + slideY, alpha);
+    // --- Region C: bottom-right corner, the song preview window ---
+    gfx = So2h_DrawPanel(gfx, BAR_SPLIT_X + slideX, BAR_SPLIT_Y + slideY, SCREEN_WIDTH + slideX,
+                         SCREEN_HEIGHT + slideY, alpha);
 
     // Only populate the arms once they have arrived, so nothing streaks across the screen.
     if (factor > 0.98f) {
@@ -435,8 +514,10 @@ void So2h_QuestBar_Draw(PlayState* play) {
             iconX = cellX + ((RIGHT_ARM_CELL_W - RIGHT_ARM_ICON) / 2);
             iconY = cellY + ((RIGHT_ARM_CELL_H - RIGHT_ARM_ICON) / 2);
 
-            gfx = So2h_FillRect(gfx, cellX, cellY, cellX + RIGHT_ARM_CELL_W - 2, cellY + RIGHT_ARM_CELL_H - 2,
-                                sBarCellBg[0], sBarCellBg[1], sBarCellBg[2], 150);
+            // Recessed slot art from the sheet as the cell background.
+            gfx = So2h_SetupSkinMode(gfx, alpha);
+            gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, cellX, cellY,
+                                    cellX + RIGHT_ARM_CELL_W - 2, cellY + RIGHT_ARM_CELL_H - 2);
 
             owned = false;
             swatch = sCellUnownedColor;
@@ -559,11 +640,20 @@ void So2h_QuestBar_Draw(PlayState* play) {
         }
 
         // ----------------------------- Bottom arm: songs (display only) ----------------------
+        // Staff lines run the full width of each row, so the twelve slots read as two staves
+        // instead of twelve unrelated boxes.
+        gfx = So2h_SetupSkinMode(gfx, alpha);
+        for (i = 0; i < BOTTOM_ARM_ROWS; i++) {
+            s16 staffY = BOTTOM_ARM_INNER_Y + (i * BOTTOM_ARM_CELL_H);
+
+            gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hStaffLinesTex, SKIN_STAFF_TEX, SKIN_STAFF_TEX,
+                                    BOTTOM_ARM_INNER_X - 2, staffY + 4,
+                                    BOTTOM_ARM_INNER_X + (BOTTOM_ARM_COLS * BOTTOM_ARM_CELL_W) + 2,
+                                    staffY + BOTTOM_ARM_CELL_H - 6);
+        }
+
         for (i = 0; i < BOTTOM_ARM_CELLS; i++) {
             So2h_BottomArmCellRect(i, &cellX, &cellY);
-
-            gfx = So2h_FillRect(gfx, cellX, cellY, cellX + BOTTOM_ARM_CELL_W - 2, cellY + BOTTOM_ARM_CELL_H - 2,
-                                sBarCellBg[0], sBarCellBg[1], sBarCellBg[2], 150);
 
             owned = CHECK_QUEST_ITEM(QUEST_SONG_SONATA + i) != 0;
             if ((i == (QUEST_SONG_LULLABY - QUEST_SONG_SONATA)) && !owned &&
@@ -572,19 +662,60 @@ void So2h_QuestBar_Draw(PlayState* play) {
                 owned = true;
             }
 
+            // Note glyphs come from the sheet now: a learned song is the white note tinted with
+            // its vanilla quest-page colour, an unlearned one is the crossed-out note.
+            gDPPipeSync(gfx++);
+            gDPSetCombineMode(gfx++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             if (owned) {
-                gfx = So2h_SetupIAMode(gfx, sSongColors[i][0], sSongColors[i][1], sSongColors[i][2], alpha);
-                gfx = Gfx_DrawTexRectIA8(gfx, (TexturePtr)gItemIconSongNoteTex, 16, 24,
-                                         So2h_MapX(cellX + ((BOTTOM_ARM_CELL_W - 12) / 2)), cellY + 4, 12, 18,
-                                         (16 << 10) / 12, (24 << 10) / 18);
-                gDPPipeSync(gfx++);
-                gDPSetCycleType(gfx++, G_CYC_1CYCLE);
-                gDPSetRenderMode(gfx++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+                gDPSetPrimColor(gfx++, 0, 0, sSongColors[i][0], sSongColors[i][1], sSongColors[i][2], alpha);
+                gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hNoteWhiteTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, cellX + 5,
+                                        cellY + 3, cellX + BOTTOM_ARM_CELL_W - 7, cellY + BOTTOM_ARM_CELL_H - 5);
             } else {
-                gfx = So2h_FillRect(gfx, cellX + 10, cellY + 8, cellX + BOTTOM_ARM_CELL_W - 12,
-                                    cellY + BOTTOM_ARM_CELL_H - 10, sCellUnownedColor[0], sCellUnownedColor[1],
-                                    sCellUnownedColor[2], alpha);
+                gDPSetPrimColor(gfx++, 0, 0, 255, 255, 255, (u8)(alpha * 3 / 4));
+                gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hNoteLockedTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, cellX + 5,
+                                        cellY + 3, cellX + BOTTOM_ARM_CELL_W - 7, cellY + BOTTOM_ARM_CELL_H - 5);
             }
+        }
+
+        // ----------------------------- Song preview window (bottom-right corner) --------------
+        {
+            s16 px0 = PREVIEW_X0 + slideX + PANEL_CORNER;
+            s16 py0 = PREVIEW_Y0 + slideY + PANEL_CORNER;
+            s16 px1 = PREVIEW_X1 + slideX - PANEL_CORNER;
+            s16 py1 = PREVIEW_Y1 + slideY - PANEL_CORNER;
+            s16 song = (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_QUEST_BAR_BOTTOM) ? sBarCursorIndex : -1;
+
+            // Staff + clef always sit in the window so it never reads as an empty hole.
+            gfx = So2h_SetupSkinMode(gfx, alpha);
+            gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hStaffClefTex, SKIN_CLEF_W_TEX, SKIN_CLEF_H_TEX, px0 + 2,
+                                    py0 + 2, px0 + 18, py1 - 2);
+            gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hStaffLinesTex, SKIN_STAFF_TEX, SKIN_STAFF_TEX, px0 + 18,
+                                    py0 + 6, px1 - 2, py1 - 6);
+
+            if (song >= 0) {
+                owned = CHECK_QUEST_ITEM(QUEST_SONG_SONATA + song) != 0;
+                if ((song == (QUEST_SONG_LULLABY - QUEST_SONG_SONATA)) && !owned &&
+                    (CHECK_QUEST_ITEM(QUEST_SONG_LULLABY_INTRO) != 0)) {
+                    owned = true;
+                }
+
+                gDPPipeSync(gfx++);
+                gDPSetCombineMode(gfx++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
+                if (owned) {
+                    gDPSetPrimColor(gfx++, 0, 0, sSongColors[song][0], sSongColors[song][1], sSongColors[song][2],
+                                    alpha);
+                    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hNoteWhiteTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX,
+                                            px0 + 40, py0 + 4, px0 + 76, py1 - 4);
+                } else {
+                    gDPSetPrimColor(gfx++, 0, 0, 255, 255, 255, alpha);
+                    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hCrossRedTex, SKIN_CELL_TEX, SKIN_CELL_TEX, px0 + 40,
+                                            py0 + 4, px0 + 76, py1 - 4);
+                }
+            }
+
+            gDPPipeSync(gfx++);
+            gDPSetCycleType(gfx++, G_CYC_1CYCLE);
+            gDPSetRenderMode(gfx++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
         }
 
         // ----------------------------- Cursor -------------------------------------------------
