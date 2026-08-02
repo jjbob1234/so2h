@@ -52,13 +52,13 @@ struct Rgb {
 /**
  * A simple RGB image with an origin-at-top-left layout.
  */
-struct Image {
+struct So2hDumpImage {
     int width = 0;
     int height = 0;
     std::vector<Rgb> pixels;
 
-    Image() = default;
-    Image(int w, int h) : width(w), height(h), pixels(static_cast<size_t>(w) * h) {
+    So2hDumpImage() = default;
+    So2hDumpImage(int w, int h) : width(w), height(h), pixels(static_cast<size_t>(w) * h) {
         for (auto& px : pixels) {
             px = { kBackdrop[0], kBackdrop[1], kBackdrop[2] };
         }
@@ -92,7 +92,7 @@ Rgb Blend(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
  * rather than assuming IA8: half the point of this dump is to find out whether the merged
  * tiles are the format soh's XML claims they are.
  */
-bool DecodeTexture(const std::shared_ptr<Fast::Texture>& tex, Image& out, std::string& formatName) {
+bool DecodeTexture(const std::shared_ptr<Fast::Texture>& tex, So2hDumpImage& out, std::string& formatName) {
     if ((tex == nullptr) || (tex->ImageData == nullptr) || (tex->Width == 0) || (tex->Height == 0)) {
         return false;
     }
@@ -102,7 +102,7 @@ bool DecodeTexture(const std::shared_ptr<Fast::Texture>& tex, Image& out, std::s
     const uint8_t* data = tex->ImageData;
     const size_t size = tex->ImageDataSize;
 
-    out = Image(w, h);
+    out = So2hDumpImage(w, h);
 
     auto need = [&](size_t bytes) { return size >= bytes; };
 
@@ -193,7 +193,7 @@ bool DecodeTexture(const std::shared_ptr<Fast::Texture>& tex, Image& out, std::s
  * 24-bit bottom-up BMP. Chosen over PNG on purpose: no encoder dependency, and every OS can
  * open it. These are 80x32 tiles, the file size does not matter.
  */
-bool WriteBmp(const std::filesystem::path& path, const Image& img) {
+bool WriteBmp(const std::filesystem::path& path, const So2hDumpImage& img) {
     if ((img.width <= 0) || (img.height <= 0)) {
         return false;
     }
@@ -251,7 +251,7 @@ bool WriteBmp(const std::filesystem::path& path, const Image& img) {
     return true;
 }
 
-void Blit(Image& dst, const Image& src, int dx, int dy) {
+void Blit(So2hDumpImage& dst, const So2hDumpImage& src, int dx, int dy) {
     for (int y = 0; y < src.height; y++) {
         for (int x = 0; x < src.width; x++) {
             dst.Set(dx + x, dy + y, src.Get(x, y));
@@ -279,7 +279,7 @@ std::string So2hAssetDump_QuestStatusTiles() {
     auto resourceMgr = Ship::Context::GetRawInstance()->GetResourceManager();
     auto archiveManager = (resourceMgr != nullptr) ? resourceMgr->GetArchiveManager() : nullptr;
 
-    Image sheet(kTileW * kSheetCols, kTileH * kSheetRows);
+    So2hDumpImage sheet(kTileW * kSheetCols, kTileH * kSheetRows);
     std::string report;
     int found = 0;
 
@@ -298,7 +298,7 @@ std::string So2hAssetDump_QuestStatusTiles() {
             }
 
             auto tex = std::static_pointer_cast<Fast::Texture>(resourceMgr->LoadResource(entryName.c_str()));
-            Image img;
+            So2hDumpImage img;
             std::string formatName;
 
             if (!DecodeTexture(tex, img, formatName)) {
