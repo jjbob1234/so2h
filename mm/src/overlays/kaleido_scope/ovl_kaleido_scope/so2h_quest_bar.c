@@ -6,6 +6,7 @@
 
 #include "z_kaleido_scope.h"
 #include "so2h_quest_bar.h"
+#include "so2h_quest_layout.h"
 #include "2s2h/Menu/so2h_pause_window.h"
 #include "2s2h/OotItemIcons.h"
 #include "BenPort.h"
@@ -19,8 +20,7 @@
 extern const char* sCounterTextures[];
 
 // ---------------------------------------------------------------------------------------
-// Layout, N64 320x240 screen space. Horizontal values are fanned out through So2h_MapX so
-// the bar hugs the real screen edges on non-4:3 displays.
+// Contents. All geometry lives in so2h_quest_layout.c and arrives in screen space.
 //
 // The bar holds the whole merged quest page: OOT's medallions / spiritual stones / Stone of
 // Agony / Gerudo Card / skulltula tokens plus MM's boss remains / Bomber's Notebook / heart
@@ -28,65 +28,52 @@ extern const char* sCounterTextures[];
 // quiver, bomb bag, wallet) is deliberately NOT here - MM's equipment screen owns it.
 // ---------------------------------------------------------------------------------------
 
-#define BAR_SPLIT_X SO2H_WINDOW_RIGHT_X  // 192, left edge of the right arm
-#define BAR_SPLIT_Y SO2H_WINDOW_BOTTOM_Y // 168, top edge of the bottom arm
+// ---------------------------------------------------------------------------------------
+// Geometry
+//
+// Every on-screen rect now comes from so2h_quest_layout.c, in screen space - the
+// widescreen-extended N64 rect space that gSPWideTextureRectangle actually consumes (see the
+// coordinate-space note at the top of so2h_quest_layout.h). Two rules follow from that and
+// both are load-bearing:
+//
+//   1. Nothing in this file may hard-code a 320-relative x coordinate any more.
+//   2. Nothing may push a coordinate through a widescreen fan-out. The layout engine already
+//      applied it, exactly once. So2h_MapX is gone for that reason - double-mapping was the
+//      easiest way to silently break every wide rect on a non-4:3 display.
+//
+// What survives here is the stuff that is genuinely not layout: source texture dimensions,
+// the fixed song count, and the proportions used to place content inside a region.
+// ---------------------------------------------------------------------------------------
 
-// --- Right arm: the hexagon window -----------------------------------------------------
-#define HEX_WIN_X0 196
-#define HEX_WIN_Y0 4
-#define HEX_WIN_X1 316
-#define HEX_WIN_Y1 112
-#define HEX_CX 256
-#define HEX_CY 58
+// The 22 songs are a fixed set. The *grid shape* they sit in is per-layout (11x2 wide,
+// 6x4 at 4:3) and comes from So2h_Layout_Get()->songCols / ->songRows, so anything that
+// needs the shape asks the layout instead of a macro.
+#define SO2H_SONG_COUNT 22
+#define BOTTOM_ARM_CELLS SO2H_SONG_COUNT
 
-// The lifted OOT line-art, 2 tiles wide x 3 tall of 80x32 = 160x96 source, centered on
-// (HEX_CX, HEX_CY) and scaled down. Kept slightly inside the medallion ring so the ring
-// reads as sitting on the hexagon's vertices.
-#define HEX_ART_W 108
-#define HEX_ART_H 65
+// Radial ring proportions inside SO2H_REGION_REMAINS_WINDOW, as a fraction of the window's
+// inner half-height: OOT's six medallions on the outer hexagon, MM's four boss remains on
+// the inner diamond, both centred on the window rather than on a fixed screen point.
+#define MEDALLION_RADIUS_FRAC 0.72f
+#define MEDALLION_ICON_FRAC 0.38f
+#define REMAINS_RADIUS_FRAC 0.34f
+#define REMAINS_ICON_FRAC 0.30f
 
-#define MEDALLION_RADIUS 33
-#define MEDALLION_ICON 18
-#define REMAINS_RADIUS 16
-#define REMAINS_ICON 14
+// How much of the remains window the lifted OOT hexagon line-art fills.
+#define HEX_ART_FRAC 0.88f
 
-// --- Right arm: the three collectible rows below the window ----------------------------
-#define ROW_A_Y 114 // Kokiri Emerald / Goron Ruby / Zora Sapphire / Stone of Agony
-#define ROW_A_H 18
-#define ROW_A_X 196
-#define ROW_A_CELL_W 30
+// Phase 1 hosts the nine legacy non-radial collectible cells in SO2H_REGION_QUEST_GRID as a
+// plain 3x3 (the real 3x2 grid + separate notebook lands in phase 2). The heart tracker is
+// pulled out of that run and given SO2H_REGION_HEART_WINDOW, which is its final home.
+#define ROW_GRID_COLS 3
+#define ROW_GRID_ROWS 3
+#define ROW_ICON_FRAC 0.76f
 
-#define ROW_B_Y 134 // Gerudo Card / Bomber's Notebook / heart tracker
-#define ROW_B_H 18
-#define ROW_B_X 196
-#define ROW_B_CELL_W 40
+// Gaps and insets are expressed against the sheet tile so they track resolution the same way
+// the art does instead of collapsing at small sizes.
+#define CELL_GAP_FRAC 0.12f
+#define WINDOW_INSET_FRAC 0.55f
 
-#define ROW_C_Y 154 // the two skulltula counters
-#define ROW_C_H 14
-#define ROW_C_X 198
-#define ROW_C_CELL_W 58
-
-#define ROW_ICON 16
-
-// --- Bottom arm: 22 songs, 11 x 2, plus the button-sequence strip ----------------------
-#define BOTTOM_ARM_COLS 11
-#define BOTTOM_ARM_ROWS 2
-#define BOTTOM_ARM_CELLS (BOTTOM_ARM_COLS * BOTTOM_ARM_ROWS) // 22
-
-#define BOTTOM_ARM_INNER_X 6
-#define BOTTOM_ARM_INNER_Y 180
-#define BOTTOM_ARM_CELL_W 28
-#define BOTTOM_ARM_CELL_H 17
-#define BOTTOM_ARM_ROW_GAP 2
-#define BOTTOM_ARM_NOTE 15
-
-// 22 cells across 320 px leaves 28 px each, which is far too narrow for a per-cell run of
-// up to eight ocarina button glyphs. They get their own full-width strip under the grid
-// instead, showing the sequence for whichever song the cursor is on.
-#define BTN_STRIP_Y 218
-#define BTN_STRIP_H 10
-#define BTN_GLYPH 10
-#define BTN_GLYPH_GAP 2
 #define BTN_TEX 16 // gOcarinaATex & co are IA8 16x16
 
 // --- Menu skin geometry ---------------------------------------------------------------
@@ -102,12 +89,12 @@ extern const char* sCounterTextures[];
 #define SKIN_CLEF_W_TEX 35
 #define SKIN_CLEF_H_TEX 70
 
-// On-screen corner size of a drawn panel, in N64 320x240 space. The source corners are 52
-// px of a 295 px wide authored panel; the bar's panels are far smaller than that, so the
-// corners are scaled down rather than eating the whole panel.
-#define PANEL_CORNER 12
-// The hexagon sub-window is much smaller again, so it gets its own thinner frame.
-#define HEX_PANEL_CORNER 8
+// On-screen corner size of a drawn panel. The source corners are 52 px on the sheet's 35 px
+// grid, so a corner is 52/35 of a tile; deriving it from So2h_Layout_TilePx() keeps the frame
+// weight identical at every resolution instead of pinning it to one.
+#define PANEL_CORNER_TILES (52.0f / 35.0f)
+// Sub-windows are much smaller than a full arm panel, so they get a thinner frame.
+#define SUB_PANEL_CORNER_TILES (34.0f / 35.0f)
 
 // MM's own 24x24 quest icons and OOT's icon_item_24_static are both RGBA32 24x24
 // (see the G_IM_FMT_RGBA / G_IM_SIZ_32b / 24 / 24 load in z_message.c).
@@ -431,15 +418,38 @@ static s32 So2h_GfxRoom(Gfx* gfx, s32 need) {
 }
 
 /**
- * Maps an N64 320-wide x coordinate onto the widescreen-extended range, proportionally.
- * This is the same fan-out FB_DrawFromFramebufferRect applies to the pause background, so
- * the bar and the shrunken background stay aligned at any aspect ratio.
+ * Rounds a screen-space float to the integer the rect commands take. Layout maths runs in
+ * f32 all the way down and only collapses to integers here, so a region and the art inside
+ * it can never disagree by a pixel because they rounded at different times.
  */
-static s16 So2h_MapX(s16 x) {
-    f32 left = (f32)OTRGetRectDimensionFromLeftEdge(0);
-    f32 right = (f32)OTRGetRectDimensionFromRightEdge(SCREEN_WIDTH);
+static s16 So2h_Rnd(f32 v) {
+    return (s16)((v < 0.0f) ? (v - 0.5f) : (v + 0.5f));
+}
 
-    return (s16)(left + ((right - left) * ((f32)x / (f32)SCREEN_WIDTH)));
+/**
+ * Current panel corner sizes, derived from the sheet tile.
+ */
+static s16 So2h_PanelCorner(void) {
+    s16 c = (s16)(((f32)So2h_Layout_TilePx() * PANEL_CORNER_TILES) + 0.5f);
+
+    return (c < 2) ? 2 : c;
+}
+
+static s16 So2h_SubPanelCorner(void) {
+    s16 c = (s16)(((f32)So2h_Layout_TilePx() * SUB_PANEL_CORNER_TILES) + 0.5f);
+
+    return (c < 2) ? 2 : c;
+}
+
+/**
+ * Grid gap / window inset in screen units, tracked against the sheet tile.
+ */
+static f32 So2h_CellGap(void) {
+    return So2h_Layout_Get()->tile * CELL_GAP_FRAC;
+}
+
+static f32 So2h_WindowInset(void) {
+    return So2h_Layout_Get()->tile * WINDOW_INSET_FRAC;
 }
 
 static Gfx* So2h_FillRect(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, u8 r, u8 g, u8 b, u8 a) {
@@ -449,7 +459,7 @@ static Gfx* So2h_FillRect(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, u8 r, u8 g, 
     gDPPipeSync(gfx++);
     gDPSetCombineMode(gfx++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
     gDPSetPrimColor(gfx++, 0, 0, r, g, b, a);
-    gDPFillWideRectangle(gfx++, So2h_MapX(x0), y0, So2h_MapX(x1), y1);
+    gDPFillWideRectangle(gfx++, x0, y0, x1, y1);
 
     return gfx;
 }
@@ -480,18 +490,23 @@ static Gfx* So2h_DrawTexRectRGBA32(Gfx* gfx, TexturePtr texture, s16 textureWidt
 }
 
 /**
- * RGBA32 texture rectangle given N64-space edges instead of a width/height, with both edges
- * pushed through So2h_MapX. Passing a screen width next to a mapped left edge silently breaks
- * on widescreen for anything wide, so every piece of art in the bar goes through this.
+ * RGBA32 texture rectangle given screen-space edges instead of a width/height. Passing a
+ * width next to an already-extended left edge silently breaks on widescreen for anything
+ * wide, so every piece of art in the bar goes through an edge-pair helper.
  */
 static Gfx* So2h_DrawSkinRect(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, s16 x0, s16 y0, s16 x1, s16 y1) {
-    s16 left = So2h_MapX(x0);
-    s16 right = So2h_MapX(x1);
-
-    if ((right <= left) || (y1 <= y0)) {
+    if ((x1 <= x0) || (y1 <= y0)) {
         return gfx;
     }
-    return So2h_DrawTexRectRGBA32(gfx, texture, texW, texH, left, y0, right - left, y1 - y0);
+    return So2h_DrawTexRectRGBA32(gfx, texture, texW, texH, x0, y0, x1 - x0, y1 - y0);
+}
+
+/**
+ * So2h_DrawSkinRect against a layout rect.
+ */
+static Gfx* So2h_DrawSkinRectR(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, const So2hRect* r) {
+    return So2h_DrawSkinRect(gfx, texture, texW, texH, So2h_Rnd(r->x0), So2h_Rnd(r->y0), So2h_Rnd(r->x1),
+                             So2h_Rnd(r->y1));
 }
 
 /**
@@ -499,22 +514,28 @@ static Gfx* So2h_DrawSkinRect(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, 
  * the lifted OOT hexagon tiles (all IA8 - the colour comes from the prim colour).
  */
 static Gfx* So2h_DrawIARect(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, s16 x0, s16 y0, s16 x1, s16 y1) {
-    s16 left = So2h_MapX(x0);
-    s16 right = So2h_MapX(x1);
     s16 w;
     s16 h;
 
-    if ((right <= left) || (y1 <= y0)) {
+    if ((x1 <= x0) || (y1 <= y0)) {
         return gfx;
     }
-    w = right - left;
+    w = x1 - x0;
     h = y1 - y0;
 
     if (!So2h_GfxRoom(gfx, 16)) {
         return gfx;
     }
-    return Gfx_DrawTexRectIA8(gfx, texture, texW, texH, left, y0, w, h, (u16)(((u32)texW << 10) / (u32)w),
+    return Gfx_DrawTexRectIA8(gfx, texture, texW, texH, x0, y0, w, h, (u16)(((u32)texW << 10) / (u32)w),
                               (u16)(((u32)texH << 10) / (u32)h));
+}
+
+/**
+ * So2h_DrawIARect against a layout rect.
+ */
+static Gfx* So2h_DrawIARectR(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, const So2hRect* r) {
+    return So2h_DrawIARect(gfx, texture, texW, texH, So2h_Rnd(r->x0), So2h_Rnd(r->y0), So2h_Rnd(r->x1),
+                           So2h_Rnd(r->y1));
 }
 
 static Gfx* So2h_SetupSkinMode(Gfx* gfx, u8 alpha) {
@@ -603,8 +624,13 @@ static Gfx* So2h_DrawPanelEx(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, s16 corne
     return gfx;
 }
 
-static Gfx* So2h_DrawPanel(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, u8 alpha) {
-    return So2h_DrawPanelEx(gfx, x0, y0, x1, y1, PANEL_CORNER, alpha);
+/**
+ * Nine-slice panel over a layout rect, offset by (dx, dy) screen units so the two arm panels
+ * can still slide in from off-frame.
+ */
+static Gfx* So2h_DrawPanelR(Gfx* gfx, const So2hRect* r, s16 corner, f32 dx, f32 dy, u8 alpha) {
+    return So2h_DrawPanelEx(gfx, So2h_Rnd(r->x0 + dx), So2h_Rnd(r->y0 + dy), So2h_Rnd(r->x1 + dx),
+                            So2h_Rnd(r->y1 + dy), corner, alpha);
 }
 
 /**
@@ -638,8 +664,8 @@ static Gfx* So2h_DrawCount(Gfx* gfx, s16 value, s16 rightX, s16 topY, u8 alpha) 
         // sCounterTextures[] is I8 everywhere else in the codebase (z_parameter.c's HUD counters
         // and z_kaleido_collect.c both load it as G_IM_FMT_I / G_IM_SIZ_8b); drawing it as IA8
         // reinterprets the intensity ramp as alpha and makes the digits fade out.
-        gfx = Gfx_DrawTexRectI8(gfx, (TexturePtr)sCounterTextures[digits[i]], 8, 16, So2h_MapX(x), topY, 6, 12,
-                                (8 << 10) / 6, (16 << 10) / 12);
+        gfx = Gfx_DrawTexRectI8(gfx, (TexturePtr)sCounterTextures[digits[i]], 8, 16, x, topY, 6, 12, (8 << 10) / 6,
+                                (16 << 10) / 12);
         x += 7;
     }
 
@@ -687,63 +713,112 @@ static void So2h_RingOffset(s16 angleDeg, s16 radius, s16* dx, s16* dy) {
 }
 
 /**
- * On-screen rect of a right-arm cell. The hexagon cells are radial, the rest are rows, so
- * everything is computed here rather than by index arithmetic in the caller.
+ * Song grid shape for the layout currently on screen. The 22 songs are fixed but the grid
+ * they sit in is not (11x2 wide, 6x4 at 4:3), so cursor arithmetic asks for it rather than
+ * assuming a constant. Guaranteed to describe at least SO2H_SONG_COUNT cells.
  */
-static void So2h_RightArmCellRect(s16 index, s16* x0, s16* y0, s16* w, s16* h) {
+static s16 So2h_SongCols(void) {
+    s16 cols = So2h_Layout_Get()->songCols;
+
+    return (cols < 1) ? 1 : cols;
+}
+
+static s16 So2h_SongRows(void) {
+    s16 rows = So2h_Layout_Get()->songRows;
+
+    return (rows < 1) ? 1 : rows;
+}
+
+/**
+ * Screen-space rect of a right-arm cell.
+ *
+ *   0..5    OOT medallions  - outer hexagon of the remains window
+ *   6..9    MM boss remains - inner diamond of the same window
+ *   16      heart tracker   - its own window (its final home)
+ *   others  the legacy collectible cells, hosted 3x3 in the quest grid for phase 1
+ *
+ * The radial cells are placed from the *window's* centre with a radius taken from the
+ * window's own inner half-size, so they follow the frame instead of a fixed screen point.
+ */
+static void So2h_RightArmCellRect(s16 index, So2hRect* out) {
+    const So2hRect* window;
+    f32 inset = So2h_WindowInset();
+    f32 cx;
+    f32 cy;
+    f32 half;
+    f32 radius;
+    f32 icon;
     s16 dx;
     s16 dy;
     s16 slot;
 
-    if ((index >= SO2H_CELL_MEDALLION_FIRST) && (index < SO2H_CELL_MEDALLION_FIRST + 6)) {
-        slot = index - SO2H_CELL_MEDALLION_FIRST;
-        So2h_RingOffset(sMedallionAngles[slot], MEDALLION_RADIUS, &dx, &dy);
-        *w = MEDALLION_ICON;
-        *h = MEDALLION_ICON;
-        *x0 = HEX_CX + dx - (MEDALLION_ICON / 2);
-        *y0 = HEX_CY + dy - (MEDALLION_ICON / 2);
+    if (((index >= SO2H_CELL_MEDALLION_FIRST) && (index < SO2H_CELL_MEDALLION_FIRST + 6)) ||
+        ((index >= SO2H_CELL_REMAINS_FIRST) && (index < SO2H_CELL_REMAINS_FIRST + 4))) {
+        s32 isMedallion = (index < SO2H_CELL_REMAINS_FIRST);
+        f32 w;
+        f32 h;
+
+        window = So2h_Layout_Region(SO2H_REGION_REMAINS_WINDOW);
+        cx = (window->x0 + window->x1) * 0.5f;
+        cy = (window->y0 + window->y1) * 0.5f;
+
+        w = (window->x1 - window->x0) - (inset * 4.0f);
+        h = (window->y1 - window->y0) - (inset * 4.0f);
+        half = ((w < h) ? w : h) * 0.5f;
+        if (half < 1.0f) {
+            half = 1.0f;
+        }
+
+        if (isMedallion) {
+            slot = index - SO2H_CELL_MEDALLION_FIRST;
+            radius = half * MEDALLION_RADIUS_FRAC;
+            icon = half * MEDALLION_ICON_FRAC;
+            So2h_RingOffset(sMedallionAngles[slot], (s16)radius, &dx, &dy);
+        } else {
+            slot = index - SO2H_CELL_REMAINS_FIRST;
+            radius = half * REMAINS_RADIUS_FRAC;
+            icon = half * REMAINS_ICON_FRAC;
+            So2h_RingOffset(sRemainsAngles[slot], (s16)radius, &dx, &dy);
+        }
+
+        out->x0 = cx + (f32)dx - (icon * 0.5f);
+        out->y0 = cy + (f32)dy - (icon * 0.5f);
+        out->x1 = out->x0 + icon;
+        out->y1 = out->y0 + icon;
         return;
     }
 
-    if ((index >= SO2H_CELL_REMAINS_FIRST) && (index < SO2H_CELL_REMAINS_FIRST + 4)) {
-        slot = index - SO2H_CELL_REMAINS_FIRST;
-        So2h_RingOffset(sRemainsAngles[slot], REMAINS_RADIUS, &dx, &dy);
-        *w = REMAINS_ICON;
-        *h = REMAINS_ICON;
-        *x0 = HEX_CX + dx - (REMAINS_ICON / 2);
-        *y0 = HEX_CY + dy - (REMAINS_ICON / 2);
+    if (index == SO2H_CELL_HEART_TRACKER) {
+        So2h_Layout_Inset(So2h_Layout_Region(SO2H_REGION_HEART_WINDOW), inset * 2.0f, out);
         return;
     }
 
-    if ((index >= SO2H_CELL_STONE_FIRST) && (index <= SO2H_CELL_STONE_OF_AGONY)) {
+    // Legacy 3x3 run: stones, Stone of Agony, Gerudo Card, notebook, the two skulltula
+    // counters. Index 16 was lifted out above, so 17/18 close the gap it left.
+    if (index < SO2H_CELL_HEART_TRACKER) {
         slot = index - SO2H_CELL_STONE_FIRST;
-        *x0 = ROW_A_X + (slot * ROW_A_CELL_W);
-        *y0 = ROW_A_Y;
-        *w = ROW_A_CELL_W - 2;
-        *h = ROW_A_H;
-        return;
+    } else {
+        slot = index - SO2H_CELL_STONE_FIRST - 1;
+    }
+    if (slot < 0) {
+        slot = 0;
+    }
+    if (slot >= (ROW_GRID_COLS * ROW_GRID_ROWS)) {
+        slot = (ROW_GRID_COLS * ROW_GRID_ROWS) - 1;
     }
 
-    if ((index >= SO2H_CELL_GERUDO_CARD) && (index <= SO2H_CELL_HEART_TRACKER)) {
-        slot = index - SO2H_CELL_GERUDO_CARD;
-        *x0 = ROW_B_X + (slot * ROW_B_CELL_W);
-        *y0 = ROW_B_Y;
-        *w = ROW_B_CELL_W - 2;
-        *h = ROW_B_H;
-        return;
-    }
-
-    // The two skulltula counters.
-    slot = index - SO2H_CELL_SKULLTULA_OOT;
-    *x0 = ROW_C_X + (slot * ROW_C_CELL_W);
-    *y0 = ROW_C_Y;
-    *w = ROW_C_CELL_W - 2;
-    *h = ROW_C_H;
+    So2h_Layout_GridCell(So2h_Layout_Region(SO2H_REGION_QUEST_GRID), ROW_GRID_COLS, ROW_GRID_ROWS,
+                         (s16)(slot % ROW_GRID_COLS), (s16)(slot / ROW_GRID_COLS), So2h_CellGap(), out);
 }
 
-static void So2h_BottomArmCellRect(s16 index, s16* x0, s16* y0) {
-    *x0 = BOTTOM_ARM_INNER_X + ((index % BOTTOM_ARM_COLS) * BOTTOM_ARM_CELL_W);
-    *y0 = BOTTOM_ARM_INNER_Y + ((index / BOTTOM_ARM_COLS) * (BOTTOM_ARM_CELL_H + BOTTOM_ARM_ROW_GAP));
+/**
+ * Screen-space rect of a song cell, from the song grid region and the active grid shape.
+ */
+static void So2h_BottomArmCellRect(s16 index, So2hRect* out) {
+    s16 cols = So2h_SongCols();
+
+    So2h_Layout_GridCell(So2h_Layout_Region(SO2H_REGION_SONG_GRID), cols, So2h_SongRows(), (s16)(index % cols),
+                         (s16)(index / cols), So2h_CellGap(), out);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -782,7 +857,7 @@ static void So2h_QuestBar_Navigate(PlayState* play, s8 target) {
     }
     if (target == NAV_EXIT_DOWN) {
         // Around the corner into the rightmost song column.
-        So2h_QuestBar_Enter(play, PAUSE_CURSOR_QUEST_BAR_BOTTOM, BOTTOM_ARM_COLS - 1);
+        So2h_QuestBar_Enter(play, PAUSE_CURSOR_QUEST_BAR_BOTTOM, (s16)(So2h_SongCols() - 1));
         return;
     }
 
@@ -792,6 +867,7 @@ static void So2h_QuestBar_Navigate(PlayState* play, s8 target) {
 
 s32 So2h_QuestBar_UpdateCursor(PlayState* play) {
     PauseContext* pauseCtx = &play->pauseCtx;
+    s16 cols;
     s16 col;
     s16 row;
 
@@ -843,8 +919,9 @@ s32 So2h_QuestBar_UpdateCursor(PlayState* play) {
     }
 
     // PAUSE_CURSOR_QUEST_BAR_BOTTOM
-    col = sBarCursorIndex % BOTTOM_ARM_COLS;
-    row = sBarCursorIndex / BOTTOM_ARM_COLS;
+    cols = So2h_SongCols();
+    col = sBarCursorIndex % cols;
+    row = sBarCursorIndex / cols;
 
     if (pauseCtx->stickAdjX < -30) {
         if (col > 0) {
@@ -852,7 +929,7 @@ s32 So2h_QuestBar_UpdateCursor(PlayState* play) {
             Audio_PlaySfx(NA_SE_SY_CURSOR);
         }
     } else if (pauseCtx->stickAdjX > 30) {
-        if (col < (BOTTOM_ARM_COLS - 1)) {
+        if ((col < (cols - 1)) && ((sBarCursorIndex + 1) < BOTTOM_ARM_CELLS)) {
             sBarCursorIndex++;
             Audio_PlaySfx(NA_SE_SY_CURSOR);
         } else {
@@ -861,7 +938,7 @@ s32 So2h_QuestBar_UpdateCursor(PlayState* play) {
         }
     } else if (pauseCtx->stickAdjY > 30) {
         if (row > 0) {
-            sBarCursorIndex -= BOTTOM_ARM_COLS;
+            sBarCursorIndex -= cols;
             Audio_PlaySfx(NA_SE_SY_CURSOR);
         } else {
             // Top row of the bottom arm returns to the page itself.
@@ -869,8 +946,8 @@ s32 So2h_QuestBar_UpdateCursor(PlayState* play) {
             sBarCursorIndex = 0;
         }
     } else if (pauseCtx->stickAdjY < -30) {
-        if (row < (BOTTOM_ARM_ROWS - 1)) {
-            sBarCursorIndex += BOTTOM_ARM_COLS;
+        if ((row < (So2h_SongRows() - 1)) && ((sBarCursorIndex + cols) < BOTTOM_ARM_CELLS)) {
+            sBarCursorIndex += cols;
             Audio_PlaySfx(NA_SE_SY_CURSOR);
         }
     }
@@ -895,25 +972,42 @@ s32 So2h_QuestBar_UpdateCursor(PlayState* play) {
  * blown up. Falls back to the plain frame when OOT content isn't merged in.
  */
 static Gfx* So2h_DrawHexWindow(Gfx* gfx, u8 alpha) {
-    s16 artX0 = HEX_CX - (HEX_ART_W / 2);
-    s16 artY0 = HEX_CY - (HEX_ART_H / 2);
-    s16 tileW = HEX_ART_W / 2;
-    s16 tileH = HEX_ART_H / 3;
+    const So2hRect* window = So2h_Layout_Region(SO2H_REGION_REMAINS_WINDOW);
+    So2hRect art;
+    f32 cx = (window->x0 + window->x1) * 0.5f;
+    f32 cy = (window->y0 + window->y1) * 0.5f;
+    f32 inset = So2h_WindowInset();
+    f32 w = ((window->x1 - window->x0) - (inset * 4.0f)) * HEX_ART_FRAC;
+    f32 h = ((window->y1 - window->y0) - (inset * 4.0f)) * HEX_ART_FRAC;
+    f32 tileW;
+    f32 tileH;
     s16 i;
 
-    gfx = So2h_DrawPanelEx(gfx, HEX_WIN_X0, HEX_WIN_Y0, HEX_WIN_X1, HEX_WIN_Y1, HEX_PANEL_CORNER, alpha);
+    gfx = So2h_DrawPanelR(gfx, window, So2h_SubPanelCorner(), 0.0f, 0.0f, alpha);
+
+    // The lifted art is 2 tiles wide x 3 tall of 80x32, so it is 160x96 - wider than it is
+    // tall. Fit it to the window's shorter axis so it never spills out of the frame.
+    if ((w / 160.0f) > (h / 96.0f)) {
+        w = (h / 96.0f) * 160.0f;
+    } else {
+        h = (w / 160.0f) * 96.0f;
+    }
+    tileW = w * 0.5f;
+    tileH = h / 3.0f;
 
     gfx = So2h_SetupIAMode(gfx, sHexArtColor[0], sHexArtColor[1], sHexArtColor[2], alpha);
     for (i = 0; i < 6; i++) {
         const char* path = OotQuestArt_GetPath(sHexTileArt[i]);
-        s16 tx = artX0 + ((i % 2) * tileW);
-        s16 ty = artY0 + ((i / 2) * tileH);
 
         if (path == NULL) {
             continue;
         }
-        gfx = So2h_DrawIARect(gfx, (TexturePtr)path, OOT_QUEST_ART_HEX_TILE_W, OOT_QUEST_ART_HEX_TILE_H, tx, ty,
-                              tx + tileW, ty + tileH);
+        art.x0 = cx - (w * 0.5f) + ((f32)(i % 2) * tileW);
+        art.y0 = cy - (h * 0.5f) + ((f32)(i / 2) * tileH);
+        art.x1 = art.x0 + tileW;
+        art.y1 = art.y0 + tileH;
+
+        gfx = So2h_DrawIARectR(gfx, (TexturePtr)path, OOT_QUEST_ART_HEX_TILE_W, OOT_QUEST_ART_HEX_TILE_H, &art);
     }
 
     return So2h_RestoreBlendState(gfx);
@@ -924,13 +1018,12 @@ static Gfx* So2h_DrawHexWindow(Gfx* gfx, u8 alpha) {
  * still reads as a place a thing goes). Every icon here is real art - the old flat colour
  * swatches are gone.
  */
-static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, s16 x0, s16 y0, s16 size, s32 owned, u8 alpha) {
+static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, const So2hRect* rect, s32 owned, u8 alpha) {
     if (tex == NULL) {
         // No art available (OOT content not merged in): fall back to the sheet's recessed
         // slot so the layout doesn't collapse into a hole.
         gfx = So2h_SetupSkinMode(gfx, (u8)(alpha / 3));
-        gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, x0, y0, x0 + size,
-                                y0 + size);
+        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, rect);
         return So2h_RestoreBlendState(gfx);
     }
 
@@ -940,7 +1033,7 @@ static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, s16 x0, s
         gfx = So2h_SetupTintMode(gfx, sCellUnownedColor[0] * 2, sCellUnownedColor[1] * 2, sCellUnownedColor[2] * 2,
                                  (u8)(alpha / 3));
     }
-    gfx = So2h_DrawSkinRect(gfx, tex, texDim, texDim, x0, y0, x0 + size, y0 + size);
+    gfx = So2h_DrawSkinRectR(gfx, tex, texDim, texDim, rect);
 
     return So2h_RestoreBlendState(gfx);
 }
@@ -950,23 +1043,20 @@ static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, s16 x0, s
  * vertices, MM's four boss remains on an inner ring sharing the same center.
  */
 static Gfx* So2h_DrawRadialIcons(Gfx* gfx, u8 alpha) {
+    So2hRect cell;
     s16 i;
-    s16 x0;
-    s16 y0;
-    s16 w;
-    s16 h;
 
     for (i = 0; i < 6; i++) {
         const char* path = OotQuestArt_GetPath(sMedallionArt[i]);
 
-        So2h_RightArmCellRect(SO2H_CELL_MEDALLION_FIRST + i, &x0, &y0, &w, &h);
-        gfx = So2h_DrawCollectible(gfx, (TexturePtr)path, OOT_QUEST_ART_ICON_DIM, x0, y0, w,
+        So2h_RightArmCellRect((s16)(SO2H_CELL_MEDALLION_FIRST + i), &cell);
+        gfx = So2h_DrawCollectible(gfx, (TexturePtr)path, OOT_QUEST_ART_ICON_DIM, &cell,
                                    So2h_OotQuestBit(OOT_QUEST_MEDALLION_FOREST + i), alpha);
     }
 
     for (i = 0; i < 4; i++) {
-        So2h_RightArmCellRect(SO2H_CELL_REMAINS_FIRST + i, &x0, &y0, &w, &h);
-        gfx = So2h_DrawCollectible(gfx, (TexturePtr)gItemIcons[ITEM_REMAINS_ODOLWA + i], ITEM_ICON_TEX, x0, y0, w,
+        So2h_RightArmCellRect((s16)(SO2H_CELL_REMAINS_FIRST + i), &cell);
+        gfx = So2h_DrawCollectible(gfx, (TexturePtr)gItemIcons[ITEM_REMAINS_ODOLWA + i], ITEM_ICON_TEX, &cell,
                                    CHECK_QUEST_ITEM(QUEST_REMAINS_ODOLWA + i) != 0, alpha);
     }
 
@@ -974,59 +1064,74 @@ static Gfx* So2h_DrawRadialIcons(Gfx* gfx, u8 alpha) {
 }
 
 /**
- * Rows A and B: the spiritual stones, Stone of Agony, Gerudo Card, Bomber's Notebook and the
- * heart tracker, each in a recessed sheet slot.
+ * Centred square inside a cell, `frac` of the cell's shorter axis. Icons are square art and
+ * cells are not, so nothing may just fill its cell or every icon stretches.
+ */
+static void So2h_IconInRect(const So2hRect* cell, f32 frac, So2hRect* out) {
+    f32 w = cell->x1 - cell->x0;
+    f32 h = cell->y1 - cell->y0;
+    f32 size = ((w < h) ? w : h) * frac;
+    f32 cx = (cell->x0 + cell->x1) * 0.5f;
+    f32 cy = (cell->y0 + cell->y1) * 0.5f;
+
+    if (size < 1.0f) {
+        size = 1.0f;
+    }
+    out->x0 = cx - (size * 0.5f);
+    out->y0 = cy - (size * 0.5f);
+    out->x1 = out->x0 + size;
+    out->y1 = out->y0 + size;
+}
+
+/**
+ * The non-radial collectibles: spiritual stones, Stone of Agony, Gerudo Card, Bomber's
+ * Notebook and the heart tracker, each in a recessed sheet slot.
+ *
+ * Phase 1 keeps the exact same element set as before and only re-hosts it: eight of them run
+ * 3x3 through the quest grid region and the heart tracker takes the heart window. Splitting
+ * the grid into its real 3x2 + separate overhanging notebook is phase 2.
  */
 static Gfx* So2h_DrawCollectibleRows(Gfx* gfx, u8 alpha) {
-    s16 i;
-    s16 x0;
-    s16 y0;
-    s16 w;
-    s16 h;
-    s16 iconX;
-    s16 iconY;
+    So2hRect cell;
+    So2hRect icon;
     s16 heartPieces;
+    s16 i;
 
     for (i = SO2H_CELL_STONE_FIRST; i <= SO2H_CELL_HEART_TRACKER; i++) {
-        So2h_RightArmCellRect(i, &x0, &y0, &w, &h);
+        So2h_RightArmCellRect(i, &cell);
+        So2h_IconInRect(&cell, ROW_ICON_FRAC, &icon);
 
         gfx = So2h_SetupSkinMode(gfx, alpha);
-        gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, x0, y0, x0 + w,
-                                y0 + h);
+        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &cell);
         gfx = So2h_RestoreBlendState(gfx);
-
-        iconX = x0 + ((w - ROW_ICON) / 2);
-        iconY = y0 + ((h - ROW_ICON) / 2);
 
         if ((i >= SO2H_CELL_STONE_FIRST) && (i < SO2H_CELL_STONE_OF_AGONY)) {
             s16 stone = i - SO2H_CELL_STONE_FIRST;
 
             gfx = So2h_DrawCollectible(gfx, (TexturePtr)OotQuestArt_GetPath(sStoneArt[stone]), OOT_QUEST_ART_ICON_DIM,
-                                       iconX, iconY, ROW_ICON,
-                                       So2h_OotQuestBit(OOT_QUEST_KOKIRI_EMERALD + stone), alpha);
+                                       &icon, So2h_OotQuestBit(OOT_QUEST_KOKIRI_EMERALD + stone), alpha);
         } else if (i == SO2H_CELL_STONE_OF_AGONY) {
             gfx = So2h_DrawCollectible(gfx, (TexturePtr)OotQuestArt_GetPath(OOT_QUEST_ART_STONE_OF_AGONY),
-                                       OOT_QUEST_ART_ICON_DIM, iconX, iconY, ROW_ICON,
-                                       So2h_OotQuestBit(OOT_QUEST_STONE_OF_AGONY), alpha);
+                                       OOT_QUEST_ART_ICON_DIM, &icon, So2h_OotQuestBit(OOT_QUEST_STONE_OF_AGONY),
+                                       alpha);
         } else if (i == SO2H_CELL_GERUDO_CARD) {
             gfx = So2h_DrawCollectible(gfx, (TexturePtr)OotQuestArt_GetPath(OOT_QUEST_ART_GERUDO_CARD),
-                                       OOT_QUEST_ART_ICON_DIM, iconX, iconY, ROW_ICON,
-                                       So2h_OotQuestBit(OOT_QUEST_GERUDO_CARD), alpha);
+                                       OOT_QUEST_ART_ICON_DIM, &icon, So2h_OotQuestBit(OOT_QUEST_GERUDO_CARD), alpha);
         } else if (i == SO2H_CELL_BOMBERS_NOTEBOOK) {
-            gfx = So2h_DrawCollectible(gfx, (TexturePtr)gItemIconBombersNotebookTex, ITEM_ICON_TEX, iconX, iconY,
-                                       ROW_ICON, CHECK_QUEST_ITEM(QUEST_BOMBERS_NOTEBOOK) != 0, alpha);
+            gfx = So2h_DrawCollectible(gfx, (TexturePtr)gItemIconBombersNotebookTex, ITEM_ICON_TEX, &icon,
+                                       CHECK_QUEST_ITEM(QUEST_BOMBERS_NOTEBOOK) != 0, alpha);
         } else {
             // Heart tracker: MM's own 48x48 IA8 heart-piece-fill icon, the same
             // gItemIcons[0x7A + count] the vanilla quest page uses, plus the heart total.
             heartPieces = (s16)((GET_SAVE_INVENTORY_QUEST_ITEMS & 0xF0000000) >> QUEST_HEART_PIECE_COUNT);
 
             gfx = So2h_SetupIAMode(gfx, 255, 255, 255, alpha);
-            gfx = So2h_DrawIARect(gfx, (TexturePtr)gItemIcons[0x7A + heartPieces], HEART_TRACKER_TEX,
-                                  HEART_TRACKER_TEX, iconX - 4, iconY, iconX - 4 + ROW_ICON, iconY + ROW_ICON);
+            gfx = So2h_DrawIARectR(gfx, (TexturePtr)gItemIcons[0x7A + heartPieces], HEART_TRACKER_TEX,
+                                   HEART_TRACKER_TEX, &icon);
             gfx = So2h_RestoreBlendState(gfx);
 
-            gfx = So2h_DrawCount(gfx, (s16)(gSaveContext.save.saveInfo.playerData.healthCapacity / 16), x0 + w - 3,
-                                 y0 + 3, alpha);
+            gfx = So2h_DrawCount(gfx, (s16)(gSaveContext.save.saveInfo.playerData.healthCapacity / 16),
+                                 (s16)(So2h_Rnd(cell.x1) - 3), (s16)(So2h_Rnd(cell.y0) + 3), alpha);
             gfx = So2h_RestoreBlendState(gfx);
         }
     }
@@ -1035,17 +1140,15 @@ static Gfx* So2h_DrawCollectibleRows(Gfx* gfx, u8 alpha) {
 }
 
 /**
- * Row C: the two skulltula counters. The first is OOT's Gold Skulltula token total, the
- * second the current (or last visited) MM spider house. Both use MM's own 24x24 skulltula
- * icon from icon_item_24_static_yar and MM's HUD counter digits - no OOT art needed.
+ * The two skulltula counters. The first is OOT's Gold Skulltula token total, the second the
+ * current (or last visited) MM spider house. Both use MM's own 24x24 skulltula icon from
+ * icon_item_24_static_yar and MM's HUD counter digits - no OOT art needed.
  */
 static Gfx* So2h_DrawSkulltulaCounters(Gfx* gfx, PlayState* play, u8 alpha) {
+    So2hRect cell;
+    So2hRect icon;
     s16 counts[2];
     s16 i;
-    s16 x0;
-    s16 y0;
-    s16 w;
-    s16 h;
 
     if ((play->sceneId == SCENE_KINSTA1) || (play->sceneId == SCENE_KINDAN2)) {
         sLastSpiderHouseScene = play->sceneId;
@@ -1055,16 +1158,19 @@ static Gfx* So2h_DrawSkulltulaCounters(Gfx* gfx, PlayState* play, u8 alpha) {
     counts[1] = Inventory_GetSkullTokenCount(sLastSpiderHouseScene);
 
     for (i = 0; i < 2; i++) {
-        So2h_RightArmCellRect(SO2H_CELL_SKULLTULA_OOT + i, &x0, &y0, &w, &h);
+        So2h_RightArmCellRect((s16)(SO2H_CELL_SKULLTULA_OOT + i), &cell);
+
+        // The icon sits left in its cell so the digits have the right half to themselves.
+        So2h_IconInRect(&cell, ROW_ICON_FRAC, &icon);
+        icon.x0 = cell.x0 + ((cell.x1 - cell.x0) * 0.04f);
+        icon.x1 = icon.x0 + (icon.y1 - icon.y0);
 
         gfx = So2h_SetupSkinMode(gfx, alpha);
-        gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, x0, y0, x0 + w,
-                                y0 + h);
-        gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gQuestIconGoldSkulltulaTex, QUEST_ICON_TEX, QUEST_ICON_TEX, x0 + 2,
-                                y0 + 1, x0 + 2 + (h - 2), y0 + 1 + (h - 2));
+        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &cell);
+        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gQuestIconGoldSkulltulaTex, QUEST_ICON_TEX, QUEST_ICON_TEX, &icon);
         gfx = So2h_RestoreBlendState(gfx);
 
-        gfx = So2h_DrawCount(gfx, counts[i], x0 + w - 3, y0 + 1, alpha);
+        gfx = So2h_DrawCount(gfx, counts[i], (s16)(So2h_Rnd(cell.x1) - 3), (s16)(So2h_Rnd(cell.y0) + 1), alpha);
         gfx = So2h_RestoreBlendState(gfx);
     }
 
@@ -1077,59 +1183,75 @@ static Gfx* So2h_DrawSkulltulaCounters(Gfx* gfx, PlayState* play, u8 alpha) {
 
 static Gfx* So2h_DrawSongCell(Gfx* gfx, s16 index, u8 alpha) {
     So2hSongInfo* song = &sSongs[index];
-    s16 x0;
-    s16 y0;
-    s16 noteX;
-    s16 noteY;
+    So2hRect cell;
+    So2hRect note;
     s32 owned = So2h_SongOwned(index);
 
-    So2h_BottomArmCellRect(index, &x0, &y0);
+    So2h_BottomArmCellRect(index, &cell);
+    So2h_IconInRect(&cell, 0.86f, &note);
 
     gfx = So2h_SetupSkinMode(gfx, alpha);
-    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, x0, y0,
-                            x0 + BOTTOM_ARM_CELL_W - 2, y0 + BOTTOM_ARM_CELL_H);
-
-    noteX = x0 + ((BOTTOM_ARM_CELL_W - 2 - BOTTOM_ARM_NOTE) / 2);
-    noteY = y0 + ((BOTTOM_ARM_CELL_H - BOTTOM_ARM_NOTE) / 2);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &cell);
 
     if (owned) {
         gfx = So2h_SetupTintMode(gfx, song->color[0], song->color[1], song->color[2], alpha);
-        gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hNoteWhiteTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, noteX, noteY,
-                                noteX + BOTTOM_ARM_NOTE, noteY + BOTTOM_ARM_NOTE);
+        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hNoteWhiteTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &note);
     } else {
         gfx = So2h_SetupTintMode(gfx, 255, 255, 255, (u8)(alpha * 3 / 4));
-        gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hNoteLockedTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, noteX, noteY,
-                                noteX + BOTTOM_ARM_NOTE, noteY + BOTTOM_ARM_NOTE);
+        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hNoteLockedTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &note);
     }
 
     return So2h_RestoreBlendState(gfx);
 }
 
 /**
- * The button-sequence strip under the song grid. 22 cells across 320 px leaves 28 px each,
- * nowhere near enough for eight 16x16 button glyphs per cell, so the sequence is shown once,
- * full size, for whichever song the cursor is on.
+ * The song preview region: clef + staff, plus the ocarina button sequence for whichever song
+ * the cursor is on. Phase 1 only re-hosts what was already the full-width button strip into
+ * SO2H_REGION_SONG_PREVIEW; the song *name* and staff-positioned notes are phase 4.
  *
  * Sequences come from MM's own gOcarinaSongButtons wherever MM knows the song; the six OOT
  * warp songs, which MM's ocarina code never learns, come from sWarpSongButtons.
  */
 static Gfx* So2h_DrawSongButtonStrip(Gfx* gfx, PauseContext* pauseCtx, u8 alpha) {
+    const So2hRect* region = So2h_Layout_Region(SO2H_REGION_SONG_PREVIEW);
     u8 buttons[WARP_SONG_MAX_BUTTONS];
+    So2hRect inner;
+    So2hRect rect;
+    f32 clefW;
+    f32 glyph;
+    f32 gap;
+    f32 totalW;
+    f32 x;
+    f32 cy;
     s16 numButtons = 0;
     So2hSongInfo* song;
     s16 songIndex;
-    s16 totalW;
-    s16 x;
     s16 i;
 
-    // Clef flourish, always present so the strip never reads as an empty gap.
+    So2h_Layout_Inset(region, So2h_WindowInset() * 2.0f, &inner);
+
+    // A staff run is 2 tiles tall on the sheet; the clef is half a tile wide against it.
+    glyph = (inner.y1 - inner.y0) * 0.55f;
+    if (glyph < 4.0f) {
+        glyph = 4.0f;
+    }
+    gap = glyph * 0.2f;
+    clefW = glyph * 0.5f;
+    cy = (inner.y0 + inner.y1) * 0.5f;
+
+    // Clef flourish + staff, always present so the region never reads as an empty gap.
     gfx = So2h_SetupSkinMode(gfx, alpha);
-    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hStaffClefTex, SKIN_CLEF_W_TEX, SKIN_CLEF_H_TEX, BOTTOM_ARM_INNER_X,
-                            BTN_STRIP_Y - 1, BOTTOM_ARM_INNER_X + 8, BTN_STRIP_Y + BTN_STRIP_H + 1);
-    gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hStaffLinesTex, SKIN_STAFF_TEX, SKIN_STAFF_TEX,
-                            BOTTOM_ARM_INNER_X + 8, BTN_STRIP_Y + 2,
-                            BOTTOM_ARM_INNER_X + (BOTTOM_ARM_COLS * BOTTOM_ARM_CELL_W) - 2,
-                            BTN_STRIP_Y + BTN_STRIP_H - 2);
+    rect.x0 = inner.x0;
+    rect.x1 = inner.x0 + clefW;
+    rect.y0 = cy - glyph;
+    rect.y1 = cy + glyph;
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hStaffClefTex, SKIN_CLEF_W_TEX, SKIN_CLEF_H_TEX, &rect);
+
+    rect.x0 = inner.x0 + clefW;
+    rect.x1 = inner.x1;
+    rect.y0 = cy - (glyph * 0.7f);
+    rect.y1 = cy + (glyph * 0.7f);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hStaffLinesTex, SKIN_STAFF_TEX, SKIN_STAFF_TEX, &rect);
     gfx = So2h_RestoreBlendState(gfx);
 
     if (pauseCtx->cursorSpecialPos != PAUSE_CURSOR_QUEST_BAR_BOTTOM) {
@@ -1162,22 +1284,39 @@ static Gfx* So2h_DrawSongButtonStrip(Gfx* gfx, PauseContext* pauseCtx, u8 alpha)
         return gfx;
     }
 
-    totalW = (numButtons * BTN_GLYPH) + ((numButtons - 1) * BTN_GLYPH_GAP);
-    x = ((SCREEN_WIDTH - totalW) / 2);
+    // Shrink the run rather than overflow the region if eight glyphs will not fit.
+    totalW = ((f32)numButtons * glyph) + ((f32)(numButtons - 1) * gap);
+    {
+        f32 avail = (inner.x1 - (inner.x0 + clefW + gap));
+
+        if ((totalW > avail) && (totalW > 0.0f)) {
+            f32 shrink = avail / totalW;
+
+            glyph *= shrink;
+            gap *= shrink;
+            totalW = avail;
+        }
+    }
+
+    x = inner.x0 + clefW + gap + (((inner.x1 - (inner.x0 + clefW + gap)) - totalW) * 0.5f);
 
     for (i = 0; i < numButtons; i++) {
         u8 btn = buttons[i];
 
         if (btn >= 5) {
             // OCARINA_BTN_C_RIGHT_OR_C_LEFT / OCARINA_BTN_INVALID: nothing sensible to draw.
-            x += BTN_GLYPH + BTN_GLYPH_GAP;
+            x += glyph + gap;
             continue;
         }
+        rect.x0 = x;
+        rect.x1 = x + glyph;
+        rect.y0 = cy - (glyph * 0.5f);
+        rect.y1 = rect.y0 + glyph;
+
         gfx = So2h_SetupIAMode(gfx, sOcarinaButtonColors[btn][0], sOcarinaButtonColors[btn][1],
                                sOcarinaButtonColors[btn][2], alpha);
-        gfx = So2h_DrawIARect(gfx, sOcarinaButtonGlyphs[btn], BTN_TEX, BTN_TEX, x, BTN_STRIP_Y, x + BTN_GLYPH,
-                              BTN_STRIP_Y + BTN_GLYPH);
-        x += BTN_GLYPH + BTN_GLYPH_GAP;
+        gfx = So2h_DrawIARectR(gfx, sOcarinaButtonGlyphs[btn], BTN_TEX, BTN_TEX, &rect);
+        x += glyph + gap;
     }
 
     return So2h_RestoreBlendState(gfx);
@@ -1187,27 +1326,51 @@ static Gfx* So2h_DrawSongButtonStrip(Gfx* gfx, PauseContext* pauseCtx, u8 alpha)
 // Draw
 // ---------------------------------------------------------------------------------------
 
+/**
+ * Draws an empty framed placeholder region: the frame plus a run of selectable-but-empty
+ * cells, so the region reads as somewhere content will live rather than as dead space.
+ * Phase 1 draws the frame only; the cells arrive with the nav work in phase 4/5.
+ */
+static Gfx* So2h_DrawPlaceholder(Gfx* gfx, So2hLayoutRegion regionId, u8 alpha) {
+    const So2hRect* region = So2h_Layout_Region(regionId);
+    f32 regionAlpha = So2h_Layout_RegionAlpha(regionId);
+    u8 a = (u8)((f32)alpha * regionAlpha);
+
+    if ((a == 0) || (region->x1 <= region->x0) || (region->y1 <= region->y0)) {
+        return gfx;
+    }
+    return So2h_DrawPanelR(gfx, region, So2h_SubPanelCorner(), 0.0f, 0.0f, a);
+}
+
 void So2h_QuestBar_Draw(PlayState* play) {
     PauseContext* pauseCtx = &play->pauseCtx;
+    const So2hLayout* layout;
+    const So2hRect* rightArm;
+    const So2hRect* bottomArm;
+    So2hRect cell;
     Gfx* gfx;
     s16 i;
-    s16 cellX;
-    s16 cellY;
-    s16 w;
-    s16 h;
     u8 alpha;
     f32 factor = So2h_PauseWindow_GetFactor();
-    s16 slideY;
-    s16 slideX;
+    f32 slideX;
+    f32 slideY;
 
     if (!So2h_PauseWindow_IsActive()) {
         return;
     }
 
+    // One layout solve per frame, before anything reads a region rect.
+    So2h_Layout_Update();
+    layout = So2h_Layout_Get();
+    rightArm = &layout->region[SO2H_REGION_RIGHT_ARM_PANEL];
+    bottomArm = &layout->region[SO2H_REGION_BOTTOM_ARM_PANEL];
+
     alpha = (u8)(255.0f * factor);
-    // Slide the two arms in from off-frame as the window settles.
-    slideX = (s16)((1.0f - factor) * (SCREEN_WIDTH - BAR_SPLIT_X));
-    slideY = (s16)((1.0f - factor) * (SCREEN_HEIGHT - BAR_SPLIT_Y));
+    // Slide the two arms in from off-frame as the window settles. Both offsets are in screen
+    // units and are taken from the arms' own sizes, so the slide is the same gesture at any
+    // aspect instead of a fixed 320-relative distance.
+    slideX = (1.0f - factor) * (rightArm->x1 - rightArm->x0);
+    slideY = (1.0f - factor) * (bottomArm->y1 - bottomArm->y0);
 
     OPEN_DISPS(play->state.gfxCtx);
 
@@ -1229,31 +1392,33 @@ void So2h_QuestBar_Draw(PlayState* play) {
     gDPSetAlphaCompare(gfx++, G_AC_NONE);
     gDPSetTextureFilter(gfx++, G_TF_BILERP);
 
-    // --- Right arm panel (collectibles) ---
-    gfx = So2h_DrawPanel(gfx, BAR_SPLIT_X + slideX, 0, SCREEN_WIDTH + slideX, BAR_SPLIT_Y, alpha);
-    // --- Bottom arm panel (songs). Now the full screen width: the old bottom-right song
-    //     preview window is gone, the 22 song cells need every pixel of it. ---
-    gfx = So2h_DrawPanel(gfx, 0, BAR_SPLIT_Y + slideY, SCREEN_WIDTH, SCREEN_HEIGHT + slideY, alpha);
+    // --- The two background arm panels ---
+    gfx = So2h_DrawPanelR(gfx, rightArm, So2h_PanelCorner(), slideX, 0.0f, alpha);
+    gfx = So2h_DrawPanelR(gfx, bottomArm, So2h_PanelCorner(), 0.0f, slideY, alpha);
 
     // Only populate the arms once they have arrived, so nothing streaks across the screen.
     if (factor > 0.98f) {
         // ----------------------------- Right arm: merged quest page ---------------------
         gfx = So2h_DrawHexWindow(gfx, alpha);
         gfx = So2h_DrawRadialIcons(gfx, alpha);
+        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_HEART_WINDOW, alpha);
+        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_QUEST_GRID, alpha);
         gfx = So2h_DrawCollectibleRows(gfx, alpha);
         gfx = So2h_DrawSkulltulaCounters(gfx, play, alpha);
 
         // ----------------------------- Bottom arm: 22 songs -----------------------------
-        // Staff lines run the full width of each row, so each row reads as one stave instead
-        // of eleven unrelated boxes.
+        // Staff lines run the full width of each row, so a row reads as one stave rather
+        // than as a line of unrelated boxes.
         gfx = So2h_SetupSkinMode(gfx, alpha);
-        for (i = 0; i < BOTTOM_ARM_ROWS; i++) {
-            s16 staffY = BOTTOM_ARM_INNER_Y + (i * (BOTTOM_ARM_CELL_H + BOTTOM_ARM_ROW_GAP));
+        for (i = 0; i < layout->songRows; i++) {
+            So2hRect staff;
+            f32 pad;
 
-            gfx = So2h_DrawSkinRect(gfx, (TexturePtr)gSo2hStaffLinesTex, SKIN_STAFF_TEX, SKIN_STAFF_TEX,
-                                    BOTTOM_ARM_INNER_X - 2, staffY + 3,
-                                    BOTTOM_ARM_INNER_X + (BOTTOM_ARM_COLS * BOTTOM_ARM_CELL_W),
-                                    staffY + BOTTOM_ARM_CELL_H - 3);
+            So2h_Layout_GridCell(&layout->region[SO2H_REGION_SONG_GRID], 1, layout->songRows, 0, i, 0.0f, &staff);
+            pad = (staff.y1 - staff.y0) * 0.28f;
+            staff.y0 += pad;
+            staff.y1 -= pad;
+            gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hStaffLinesTex, SKIN_STAFF_TEX, SKIN_STAFF_TEX, &staff);
         }
         gfx = So2h_RestoreBlendState(gfx);
 
@@ -1263,29 +1428,46 @@ void So2h_QuestBar_Draw(PlayState* play) {
 
         gfx = So2h_DrawSongButtonStrip(gfx, pauseCtx, alpha);
 
+        // ----------------------------- Empty regions ------------------------------------
+        // Framed but unpopulated for now, so the new layout is visible end to end and any
+        // region that lands in the wrong place is obvious rather than invisible.
+        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_DATA_SCREEN, alpha);
+        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_CONTENT_AREA, alpha);
+        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_MENUBAR, alpha);
+
         // ----------------------------- Cursor -------------------------------------------
         // The vanilla KaleidoScope_DrawCursor lives in the pause 3D space and would be trapped
         // inside the shrunken window, so while the cursor is in an arm the bar draws its own
         // 2D highlight instead and the caller suppresses the 3D one.
         if (So2h_QuestBar_IsCursorInBar(pauseCtx) && (pauseCtx->state == PAUSE_STATE_MAIN)) {
+            s16 cx0;
+            s16 cy0;
+            s16 cx1;
+            s16 cy1;
             u8 pulse;
 
             sBarCursorPhase += 0x400;
             pulse = (u8)(160.0f + (95.0f * Math_SinS(sBarCursorPhase)));
 
             if (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_QUEST_BAR_RIGHT) {
-                So2h_RightArmCellRect(sBarCursorIndex, &cellX, &cellY, &w, &h);
+                So2h_RightArmCellRect(sBarCursorIndex, &cell);
             } else {
-                So2h_BottomArmCellRect(sBarCursorIndex, &cellX, &cellY);
-                w = BOTTOM_ARM_CELL_W - 2;
-                h = BOTTOM_ARM_CELL_H;
+                So2h_BottomArmCellRect(sBarCursorIndex, &cell);
             }
 
-            // Four one-pixel edges instead of a filled quad, so the cell contents stay readable.
-            gfx = So2h_FillRect(gfx, cellX, cellY, cellX + w, cellY + 1, 255, 255, 160, pulse);
-            gfx = So2h_FillRect(gfx, cellX, cellY + h - 1, cellX + w, cellY + h, 255, 255, 160, pulse);
-            gfx = So2h_FillRect(gfx, cellX, cellY, cellX + 1, cellY + h, 255, 255, 160, pulse);
-            gfx = So2h_FillRect(gfx, cellX + w - 1, cellY, cellX + w, cellY + h, 255, 255, 160, pulse);
+            cx0 = So2h_Rnd(cell.x0);
+            cy0 = So2h_Rnd(cell.y0);
+            cx1 = So2h_Rnd(cell.x1);
+            cy1 = So2h_Rnd(cell.y1);
+
+            if ((cx1 > cx0) && (cy1 > cy0)) {
+                // Four one-pixel edges instead of a filled quad, so the cell contents stay
+                // readable underneath the highlight.
+                gfx = So2h_FillRect(gfx, cx0, cy0, cx1, (s16)(cy0 + 1), 255, 255, 160, pulse);
+                gfx = So2h_FillRect(gfx, cx0, (s16)(cy1 - 1), cx1, cy1, 255, 255, 160, pulse);
+                gfx = So2h_FillRect(gfx, cx0, cy0, (s16)(cx0 + 1), cy1, 255, 255, 160, pulse);
+                gfx = So2h_FillRect(gfx, (s16)(cx1 - 1), cy0, cx1, cy1, 255, 255, 160, pulse);
+            }
         }
     }
 

@@ -45,3 +45,19 @@ space with a backwards-L bar: right arm = quest progress (MM + OOT), bottom arm 
 1. Commit + push to `so2h-origin so2h-oot-menu-scaffold`.
 2. `AGENT_BUILD_RULES.md`: first CI check at **+15 min**, then every **5 min**, each documented with status + timestamp. Max 5 fix attempts.
 3. On green: pull the `2ship-windows` artifact, repack under `/home/user/so2h_builds/`, deliver zip + written change summary.
+
+## Phase 1 — layout engine (in progress, pushed for CI)
+- NEW `mm/src/overlays/kaleido_scope/ovl_kaleido_scope/so2h_quest_layout.{h,c}`.
+- Corrected the plan's premise: rect commands take widescreen-extended N64 space
+  (x = OTRGetRectDimensionFrom{Left,Right}Edge, y = 0..240), NOT framebuffer pixels.
+  OTRGetGameRenderWidth/Height are only texture dims (framebuffer_effects.c:140).
+  Design tables unchanged — the extended span IS 426x240 at 16:9.
+- Two canon tables (426x240 wide / 320x240 4:3), 1.45/1.55 hysteresis, 14-frame smoothstep
+  morph, 6% parabolic squash/stretch overshoot, mask-under alpha for single-canon regions.
+- Wide bottom-arm band compressed to 168..240 to match SO2H_WINDOW_BOTTOM_Y (mock said 164;
+  arm would have covered live pause-window content).
+- so2h_quest_bar.c: So2h_MapX DELETED (layout does the fan-out exactly once). All draw
+  helpers now screen-space; added So2h_Rnd / *RectR rect wrappers / So2h_PanelCorner /
+  So2h_SubPanelCorner / So2h_CellGap / So2h_WindowInset / So2h_IconInRect / So2h_SongCols /
+  So2h_SongRows. Every element re-hosted on layout rects, no content change.
+- Verified: gcc -fsyntax-only clean on both files (only pre-existing line-284 const warning).
