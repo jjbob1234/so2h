@@ -17,6 +17,10 @@ extern "C" {
 #include "overlays/gamestates/ovl_title/z_title.h"
 }
 
+// SO2H [Menu] asset dumper, see 2s2h/DeveloperTools/So2hAssetDump.cpp
+bool So2hAssetDump_QuestStatusTilesHandler(std::shared_ptr<Ship::Console> console, const std::vector<std::string>& args,
+                                           std::string* output);
+
 #define CMD_REGISTER Ship::Context::GetRawInstance()->GetConsole()->AddCommand
 // TODO: Commands should be using the output passed in.
 #define ERROR_MESSAGE                                                                    \
@@ -289,6 +293,11 @@ void DebugConsole_Init(void) {
                               { "rx", Ship::ArgumentType::NUMBER, true },
                               { "ry", Ship::ArgumentType::NUMBER, true },
                               { "rz", Ship::ArgumentType::NUMBER, true } } });
+
+    // SO2H [Menu]
+    CMD_REGISTER("so2h_dump_quest_tiles",
+                 { So2hAssetDump_QuestStatusTilesHandler,
+                   "Dumps the 15 merged OOT gPauseQuestStatus tiles to so2h_dump/ as BMPs plus a contact sheet." });
 
     CMD_REGISTER("pos", { SetPosHandler,
                           "Sets the position of the player.",
