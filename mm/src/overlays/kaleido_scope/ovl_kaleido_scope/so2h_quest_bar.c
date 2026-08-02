@@ -68,6 +68,19 @@ extern const char* sCounterTextures[];
 #define ROW_GRID_COLS 3
 #define ROW_GRID_ROWS 3
 #define ROW_ICON_FRAC 0.76f
+// How much of its disc a radial icon fills, leaving the disc's bevel visible as a rim.
+#define RADIAL_ICON_FRAC 0.70f
+
+// Placeholder regions: empty-but-framed slot grids, so a region that has no content yet still
+// reads as somewhere content goes.
+#define PLACEHOLDER_COLS 4
+#define PLACEHOLDER_ROWS 3
+#define PLACEHOLDER_MENUBAR_COLS 6
+
+// The data screen's stat slats: how many per column group, and how much of the row height is
+// trimmed off each side to turn a cell into a bar.
+#define DATA_SLAT_ROWS 4
+#define DATA_SLAT_SQUEEZE 0.22f
 
 // Gaps and insets are expressed against the sheet tile so they track resolution the same way
 // the art does instead of collapsing at small sizes.
@@ -278,19 +291,13 @@ static u8 sWarpSongButtons[6][WARP_SONG_MAX_BUTTONS] = {
                               OCARINA_BTN_C_LEFT, OCARINA_BTN_C_UP, 0, 0 },
 };
 
-// IA8 16x16 button glyphs, indexed by OCARINA_BTN_*. Same table z_kaleido_collect.c and
-// z_message.c build for the vanilla ocarina staff.
+// Full-colour 35x35 button glyphs from the menu sheet, indexed by OCARINA_BTN_*. The vanilla
+// staff uses the IA8 16x16 gOcarinaATex set tinted at draw time; the sheet ships these already
+// coloured and at the same scale as every other glyph in this menu, so the ocarina run matches
+// the rest of the page instead of being the one tinted-monochrome element on it.
 static TexturePtr sOcarinaButtonGlyphs[5] = {
-    gOcarinaATex, gOcarinaCDownTex, gOcarinaCRightTex, gOcarinaCLeftTex, gOcarinaCUpTex,
-};
-
-// A is blue, the C buttons are yellow, matching the in-game controller colours.
-static u8 sOcarinaButtonColors[5][3] = {
-    { 90, 160, 255 },  // A
-    { 255, 220, 60 },  // C-Down
-    { 255, 220, 60 },  // C-Right
-    { 255, 220, 60 },  // C-Left
-    { 255, 220, 60 },  // C-Up
+    (TexturePtr)gSo2hBtnATex, (TexturePtr)gSo2hBtnCDownTex, (TexturePtr)gSo2hBtnCRightTex,
+    (TexturePtr)gSo2hBtnCLeftTex, (TexturePtr)gSo2hBtnCUpTex,
 };
 
 // ---------------------------------------------------------------------------------------
@@ -435,11 +442,9 @@ static s16 So2h_PanelCorner(void) {
     return (c < 2) ? 2 : c;
 }
 
-static s16 So2h_SubPanelCorner(void) {
-    s16 c = (s16)(((f32)So2h_Layout_TilePx() * SUB_PANEL_CORNER_TILES) + 0.5f);
-
-    return (c < 2) ? 2 : c;
-}
+// So2h_SubPanelCorner() is gone with the re-skin: sub-windows are no longer nine-sliced
+// panels with a computed corner radius, they are a stretched gSo2hWindow whose corner
+// scales with the rect. SUB_PANEL_CORNER_TILES is kept as documentation of the old radius.
 
 /**
  * Grid gap / window inset in screen units, tracked against the sheet tile.
@@ -631,6 +636,98 @@ static Gfx* So2h_DrawPanelEx(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, s16 corne
 static Gfx* So2h_DrawPanelR(Gfx* gfx, const So2hRect* r, s16 corner, f32 dx, f32 dy, u8 alpha) {
     return So2h_DrawPanelEx(gfx, So2h_Rnd(r->x0 + dx), So2h_Rnd(r->y0 + dy), So2h_Rnd(r->x1 + dx),
                             So2h_Rnd(r->y1 + dy), corner, alpha);
+}
+
+// ---------------------------------------------------------------------------------------
+// Region skins
+//
+// The bar deliberately does NOT draw the same nine-slice frame for every region - that is
+// what made the first pass read as one window stamped over and over. The reference composite
+// gets its depth from using a *different* piece of the sheet for each job, positioned and
+// scaled but never edited:
+//
+//   gSo2hFrame*      52/35    the nine-slice - now ONLY the two outer arm panels
+//   gSo2hWindow      210x210  inset rounded sub-window - heart, quest grid, remains, data
+//                             screen, song grid, song preview, content area, menubar
+//   gSo2hSlotRecess  70x70    recessed dark slot - every cell, and the data-screen slats
+//   gSo2hCellTile    70x70    raised bright block - the notebook overhang and the selection
+//   gSo2hRoundTile   70x70    raised disc - the backing under each radial icon
+//   gSo2hSlotHatch   35x35    hatched fill - an empty-but-selectable placeholder cell
+//
+// These are stretched to their rect rather than nine-sliced, because that is how the
+// reference is built: the window art's rounded corner grows with the panel instead of
+// staying a fixed radius, and that proportional corner is most of what makes a region read
+// as a window rather than as a box. The nine-slice is still right for the arm panels, whose
+// frame weight has to stay constant no matter how long the arm gets.
+// ---------------------------------------------------------------------------------------
+
+#define SKIN_WINDOW_TEX 210 // gSo2hWindow
+
+/**
+ * Inset rounded sub-window. The workhorse of the redesign.
+ */
+static Gfx* So2h_DrawWindow(Gfx* gfx, const So2hRect* r, u8 alpha) {
+    if (alpha == 0) {
+        return gfx;
+    }
+    gfx = So2h_SetupSkinMode(gfx, alpha);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hWindowTex, SKIN_WINDOW_TEX, SKIN_WINDOW_TEX, r);
+
+    return So2h_RestoreBlendState(gfx);
+}
+
+/**
+ * A recessed slot. Used square for cells and stretched along x for the data-screen slats.
+ */
+static Gfx* So2h_DrawRecess(Gfx* gfx, const So2hRect* r, u8 alpha) {
+    if (alpha == 0) {
+        return gfx;
+    }
+    gfx = So2h_SetupSkinMode(gfx, alpha);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotRecessTex, SKIN_CELL_TEX, SKIN_CELL_TEX, r);
+
+    return So2h_RestoreBlendState(gfx);
+}
+
+/**
+ * A raised block - the opposite read to So2h_DrawRecess, so a thing sitting on top of the
+ * page (the notebook, the cursor's cell) is instantly distinguishable from a hole in it.
+ */
+static Gfx* So2h_DrawRaised(Gfx* gfx, const So2hRect* r, u8 alpha) {
+    if (alpha == 0) {
+        return gfx;
+    }
+    gfx = So2h_SetupSkinMode(gfx, alpha);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hCellTileTex, SKIN_CELL_TEX, SKIN_CELL_TEX, r);
+
+    return So2h_RestoreBlendState(gfx);
+}
+
+/**
+ * A raised disc, for the radial icons - a round backing under a round arrangement reads far
+ * better than square cells scattered around a hexagon.
+ */
+static Gfx* So2h_DrawDisc(Gfx* gfx, const So2hRect* r, u8 alpha) {
+    if (alpha == 0) {
+        return gfx;
+    }
+    gfx = So2h_SetupSkinMode(gfx, alpha);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hRoundTileTex, SKIN_CELL_TEX, SKIN_CELL_TEX, r);
+
+    return So2h_RestoreBlendState(gfx);
+}
+
+/**
+ * So2h_DrawWindow for a whole layout region, honouring the region's morph alpha.
+ */
+static Gfx* So2h_DrawRegionWindow(Gfx* gfx, So2hLayoutRegion regionId, u8 alpha) {
+    const So2hRect* region = So2h_Layout_Region(regionId);
+    u8 a = (u8)((f32)alpha * So2h_Layout_RegionAlpha(regionId));
+
+    if ((a == 0) || (region->x1 <= region->x0) || (region->y1 <= region->y0)) {
+        return gfx;
+    }
+    return So2h_DrawWindow(gfx, region, a);
 }
 
 /**
@@ -983,7 +1080,7 @@ static Gfx* So2h_DrawHexWindow(Gfx* gfx, u8 alpha) {
     f32 tileH;
     s16 i;
 
-    gfx = So2h_DrawPanelR(gfx, window, So2h_SubPanelCorner(), 0.0f, 0.0f, alpha);
+    gfx = So2h_DrawWindow(gfx, window, alpha);
 
     // The lifted art is 2 tiles wide x 3 tall of 80x32, so it is 160x96 - wider than it is
     // tall. Fit it to the window's shorter axis so it never spills out of the frame.
@@ -1022,9 +1119,7 @@ static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, const So2
     if (tex == NULL) {
         // No art available (OOT content not merged in): fall back to the sheet's recessed
         // slot so the layout doesn't collapse into a hole.
-        gfx = So2h_SetupSkinMode(gfx, (u8)(alpha / 3));
-        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, rect);
-        return So2h_RestoreBlendState(gfx);
+        return So2h_DrawRecess(gfx, rect, (u8)(alpha / 3));
     }
 
     if (owned) {
@@ -1035,6 +1130,13 @@ static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, const So2
     }
     gfx = So2h_DrawSkinRectR(gfx, tex, texDim, texDim, rect);
 
+    if (!owned) {
+        // A dimmed icon alone is ambiguous at a glance against a dark page; the sheet's red
+        // cross over it makes "not collected" unmistakable without hiding what the slot is.
+        gfx = So2h_SetupSkinMode(gfx, (u8)(alpha * 2 / 5));
+        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hCrossRedTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, rect);
+    }
+
     return So2h_RestoreBlendState(gfx);
 }
 
@@ -1042,21 +1144,30 @@ static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, const So2
  * The two concentric rings inside the hexagon window: OOT's six medallions on the hexagon's
  * vertices, MM's four boss remains on an inner ring sharing the same center.
  */
+static void So2h_IconInRect(const So2hRect* cell, f32 frac, So2hRect* out);
+
 static Gfx* So2h_DrawRadialIcons(Gfx* gfx, u8 alpha) {
     So2hRect cell;
+    So2hRect icon;
     s16 i;
 
     for (i = 0; i < 6; i++) {
         const char* path = OotQuestArt_GetPath(sMedallionArt[i]);
 
         So2h_RightArmCellRect((s16)(SO2H_CELL_MEDALLION_FIRST + i), &cell);
-        gfx = So2h_DrawCollectible(gfx, (TexturePtr)path, OOT_QUEST_ART_ICON_DIM, &cell,
+        // A round backing under a round arrangement: the disc reads as a socket the
+        // medallion sits in, and keeps the hexagon line-art from running under the icon.
+        gfx = So2h_DrawDisc(gfx, &cell, alpha);
+        So2h_IconInRect(&cell, RADIAL_ICON_FRAC, &icon);
+        gfx = So2h_DrawCollectible(gfx, (TexturePtr)path, OOT_QUEST_ART_ICON_DIM, &icon,
                                    So2h_OotQuestBit(OOT_QUEST_MEDALLION_FOREST + i), alpha);
     }
 
     for (i = 0; i < 4; i++) {
         So2h_RightArmCellRect((s16)(SO2H_CELL_REMAINS_FIRST + i), &cell);
-        gfx = So2h_DrawCollectible(gfx, (TexturePtr)gItemIcons[ITEM_REMAINS_ODOLWA + i], ITEM_ICON_TEX, &cell,
+        gfx = So2h_DrawDisc(gfx, &cell, alpha);
+        So2h_IconInRect(&cell, RADIAL_ICON_FRAC, &icon);
+        gfx = So2h_DrawCollectible(gfx, (TexturePtr)gItemIcons[ITEM_REMAINS_ODOLWA + i], ITEM_ICON_TEX, &icon,
                                    CHECK_QUEST_ITEM(QUEST_REMAINS_ODOLWA + i) != 0, alpha);
     }
 
@@ -1101,9 +1212,14 @@ static Gfx* So2h_DrawCollectibleRows(Gfx* gfx, u8 alpha) {
         So2h_RightArmCellRect(i, &cell);
         So2h_IconInRect(&cell, ROW_ICON_FRAC, &icon);
 
-        gfx = So2h_SetupSkinMode(gfx, alpha);
-        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &cell);
-        gfx = So2h_RestoreBlendState(gfx);
+        // The notebook is the one element that sits *on* the page rather than in it, so it
+        // gets the raised block and everything else gets the recessed slot. That one
+        // inversion is what stops the grid reading as nine identical holes.
+        if (i == SO2H_CELL_BOMBERS_NOTEBOOK) {
+            gfx = So2h_DrawRaised(gfx, &cell, alpha);
+        } else {
+            gfx = So2h_DrawRecess(gfx, &cell, alpha);
+        }
 
         if ((i >= SO2H_CELL_STONE_FIRST) && (i < SO2H_CELL_STONE_OF_AGONY)) {
             s16 stone = i - SO2H_CELL_STONE_FIRST;
@@ -1165,8 +1281,8 @@ static Gfx* So2h_DrawSkulltulaCounters(Gfx* gfx, PlayState* play, u8 alpha) {
         icon.x0 = cell.x0 + ((cell.x1 - cell.x0) * 0.04f);
         icon.x1 = icon.x0 + (icon.y1 - icon.y0);
 
+        gfx = So2h_DrawRecess(gfx, &cell, alpha);
         gfx = So2h_SetupSkinMode(gfx, alpha);
-        gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &cell);
         gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gQuestIconGoldSkulltulaTex, QUEST_ICON_TEX, QUEST_ICON_TEX, &icon);
         gfx = So2h_RestoreBlendState(gfx);
 
@@ -1190,8 +1306,7 @@ static Gfx* So2h_DrawSongCell(Gfx* gfx, s16 index, u8 alpha) {
     So2h_BottomArmCellRect(index, &cell);
     So2h_IconInRect(&cell, 0.86f, &note);
 
-    gfx = So2h_SetupSkinMode(gfx, alpha);
-    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotDarkTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &cell);
+    gfx = So2h_DrawRecess(gfx, &cell, alpha);
 
     if (owned) {
         gfx = So2h_SetupTintMode(gfx, song->color[0], song->color[1], song->color[2], alpha);
@@ -1228,6 +1343,8 @@ static Gfx* So2h_DrawSongButtonStrip(Gfx* gfx, PauseContext* pauseCtx, u8 alpha)
     s16 songIndex;
     s16 i;
 
+    // The preview sits in its own sub-window, like every other region in the reference.
+    gfx = So2h_DrawRegionWindow(gfx, SO2H_REGION_SONG_PREVIEW, alpha);
     So2h_Layout_Inset(region, So2h_WindowInset() * 2.0f, &inner);
 
     // A staff run is 2 tiles tall on the sheet; the clef is half a tile wide against it.
@@ -1313,9 +1430,8 @@ static Gfx* So2h_DrawSongButtonStrip(Gfx* gfx, PauseContext* pauseCtx, u8 alpha)
         rect.y0 = cy - (glyph * 0.5f);
         rect.y1 = rect.y0 + glyph;
 
-        gfx = So2h_SetupIAMode(gfx, sOcarinaButtonColors[btn][0], sOcarinaButtonColors[btn][1],
-                               sOcarinaButtonColors[btn][2], alpha);
-        gfx = So2h_DrawIARectR(gfx, sOcarinaButtonGlyphs[btn], BTN_TEX, BTN_TEX, &rect);
+        gfx = So2h_SetupSkinMode(gfx, alpha);
+        gfx = So2h_DrawSkinRectR(gfx, sOcarinaButtonGlyphs[btn], SKIN_GLYPH_TEX, SKIN_GLYPH_TEX, &rect);
         x += glyph + gap;
     }
 
@@ -1335,11 +1451,102 @@ static Gfx* So2h_DrawPlaceholder(Gfx* gfx, So2hLayoutRegion regionId, u8 alpha) 
     const So2hRect* region = So2h_Layout_Region(regionId);
     f32 regionAlpha = So2h_Layout_RegionAlpha(regionId);
     u8 a = (u8)((f32)alpha * regionAlpha);
+    So2hRect inner;
+    So2hRect cellRect;
+    So2hRect hatchRect;
+    s16 cols;
+    s16 rows;
+    s16 col;
+    s16 row;
 
     if ((a == 0) || (region->x1 <= region->x0) || (region->y1 <= region->y0)) {
         return gfx;
     }
-    return So2h_DrawPanelR(gfx, region, So2h_SubPanelCorner(), 0.0f, 0.0f, a);
+
+    gfx = So2h_DrawWindow(gfx, region, a);
+    So2h_Layout_Inset(region, So2h_WindowInset() * 1.6f, &inner);
+
+    // A framed void reads as a bug; a frame full of empty slots reads as somewhere content
+    // goes. The menubar gets one row of wide slots, everything else a grid.
+    cols = (regionId == SO2H_REGION_MENUBAR) ? PLACEHOLDER_MENUBAR_COLS : PLACEHOLDER_COLS;
+    rows = (regionId == SO2H_REGION_MENUBAR) ? 1 : PLACEHOLDER_ROWS;
+
+    for (row = 0; row < rows; row++) {
+        for (col = 0; col < cols; col++) {
+            So2h_Layout_GridCell(&inner, cols, rows, col, row, So2h_CellGap(), &cellRect);
+            if ((cellRect.x1 - cellRect.x0) < 2.0f) {
+                continue;
+            }
+            gfx = So2h_DrawRecess(gfx, &cellRect, (u8)(a * 3 / 4));
+
+            // Hatch fill inside the recess: an empty slot that is *meant* to be empty for
+            // now, distinct from a live cell whose contents just failed to resolve.
+            So2h_Layout_Inset(&cellRect, So2h_WindowInset(), &hatchRect);
+            if ((hatchRect.x1 - hatchRect.x0) >= 2.0f) {
+                gfx = So2h_SetupSkinMode(gfx, (u8)(a / 2));
+                gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hSlotHatchTex, SKIN_GLYPH_TEX, SKIN_GLYPH_TEX,
+                                         &hatchRect);
+                gfx = So2h_RestoreBlendState(gfx);
+            }
+        }
+    }
+
+    return gfx;
+}
+
+/**
+ * The data screen. Not a placeholder skin - the reference builds it as a run of long thin
+ * recessed slats grouped into columns, one slat per stat line, and that slat run is most of
+ * what makes the region read as a readout instead of an empty panel. The stat *text* lands
+ * in phase 5; the slats it will sit on are the geometry, so they go in now.
+ */
+static Gfx* So2h_DrawDataScreen(Gfx* gfx, u8 alpha) {
+    const So2hRect* region = So2h_Layout_Region(SO2H_REGION_DATA_SCREEN);
+    const So2hLayout* layout = So2h_Layout_Get();
+    u8 a = (u8)((f32)alpha * So2h_Layout_RegionAlpha(SO2H_REGION_DATA_SCREEN));
+    So2hRect inner;
+    So2hRect group;
+    So2hRect slat;
+    s16 cols;
+    s16 col;
+    s16 row;
+
+    if ((a == 0) || (region->x1 <= region->x0) || (region->y1 <= region->y0)) {
+        return gfx;
+    }
+
+    gfx = So2h_DrawWindow(gfx, region, a);
+    So2h_Layout_Inset(region, So2h_WindowInset() * 1.6f, &inner);
+
+    cols = layout->dataCols;
+    if (cols < 1) {
+        cols = 1;
+    }
+
+    for (col = 0; col < cols; col++) {
+        // Column groups are gapped generously so the slats read as two blocks of stats
+        // rather than as one undifferentiated grid.
+        So2h_Layout_GridCell(&inner, cols, 1, col, 0, So2h_CellGap() * 2.0f, &group);
+
+        for (row = 0; row < DATA_SLAT_ROWS; row++) {
+            f32 pad;
+
+            So2h_Layout_GridCell(&group, 1, DATA_SLAT_ROWS, 0, row, 0.0f, &slat);
+            // A slat is a thin bar, not a full-height cell: squeeze it vertically about its
+            // own centre. This is the one place the sheet art is stretched along its long
+            // axis on purpose.
+            pad = (slat.y1 - slat.y0) * DATA_SLAT_SQUEEZE;
+            slat.y0 += pad;
+            slat.y1 -= pad;
+
+            if ((slat.y1 - slat.y0) < 2.0f) {
+                continue;
+            }
+            gfx = So2h_DrawRecess(gfx, &slat, a);
+        }
+    }
+
+    return gfx;
 }
 
 void So2h_QuestBar_Draw(PlayState* play) {
@@ -1401,26 +1608,19 @@ void So2h_QuestBar_Draw(PlayState* play) {
         // ----------------------------- Right arm: merged quest page ---------------------
         gfx = So2h_DrawHexWindow(gfx, alpha);
         gfx = So2h_DrawRadialIcons(gfx, alpha);
-        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_HEART_WINDOW, alpha);
-        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_QUEST_GRID, alpha);
+        // Window only, not a placeholder: both regions get their real contents drawn on top
+        // by So2h_DrawCollectibleRows, so a placeholder's empty-cell grid would double-draw
+        // a recess under every live cell.
+        gfx = So2h_DrawRegionWindow(gfx, SO2H_REGION_HEART_WINDOW, alpha);
+        gfx = So2h_DrawRegionWindow(gfx, SO2H_REGION_QUEST_GRID, alpha);
         gfx = So2h_DrawCollectibleRows(gfx, alpha);
         gfx = So2h_DrawSkulltulaCounters(gfx, play, alpha);
 
         // ----------------------------- Bottom arm: 22 songs -----------------------------
-        // Staff lines run the full width of each row, so a row reads as one stave rather
-        // than as a line of unrelated boxes.
-        gfx = So2h_SetupSkinMode(gfx, alpha);
-        for (i = 0; i < layout->songRows; i++) {
-            So2hRect staff;
-            f32 pad;
-
-            So2h_Layout_GridCell(&layout->region[SO2H_REGION_SONG_GRID], 1, layout->songRows, 0, i, 0.0f, &staff);
-            pad = (staff.y1 - staff.y0) * 0.28f;
-            staff.y0 += pad;
-            staff.y1 -= pad;
-            gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hStaffLinesTex, SKIN_STAFF_TEX, SKIN_STAFF_TEX, &staff);
-        }
-        gfx = So2h_RestoreBlendState(gfx);
+        // The song grid is its own sub-window. Staff lines used to run behind every row here;
+        // in the reference the staff belongs to the preview only, and the grid is a plain
+        // window full of note cells, so the per-row stave is gone.
+        gfx = So2h_DrawRegionWindow(gfx, SO2H_REGION_SONG_GRID, alpha);
 
         for (i = 0; i < BOTTOM_ARM_CELLS; i++) {
             gfx = So2h_DrawSongCell(gfx, i, alpha);
@@ -1431,7 +1631,7 @@ void So2h_QuestBar_Draw(PlayState* play) {
         // ----------------------------- Empty regions ------------------------------------
         // Framed but unpopulated for now, so the new layout is visible end to end and any
         // region that lands in the wrong place is obvious rather than invisible.
-        gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_DATA_SCREEN, alpha);
+        gfx = So2h_DrawDataScreen(gfx, alpha);
         gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_CONTENT_AREA, alpha);
         gfx = So2h_DrawPlaceholder(gfx, SO2H_REGION_MENUBAR, alpha);
 
