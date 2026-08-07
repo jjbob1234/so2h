@@ -74,3 +74,6 @@ _packages/
 
 build/
 .cache
+# Python bytecode from tools/
+__pycache__/
+*.pyc

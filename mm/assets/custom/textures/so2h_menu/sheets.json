@@ -1,0 +1,166 @@
+{
+  "$comment": [
+    "SO2H menu sheet manifest. Consumed by tools/so2h_gen_sheets.py, which emits",
+    "mm/assets/so2h_ui_sheets_assets.h (the __OTR__ path defines) and",
+    "mm/2s2h/Menu/so2h_ui_sheets.h (the So2hUiSheetDef table + slice ids).",
+    "",
+    "THE GRID IS NEVER INFERRED FROM PIXELS. Every sheet declares its unit and grid here and",
+    "the generator hard-fails if the declared grid does not divide the file exactly.",
+    "",
+    "'run' is the cell band that a growing panel repeats or stretches through. It is a single",
+    "middle cell for every frame sheet on purpose: a one-cell band is used identically on every",
+    "row and every column, so 'A B B C D' grows as 'A B [B..] C D' and the interior row",
+    "'E F F F G' grows as 'E F [F..] F G' with no cross-row drift. A wider band would alternate",
+    "two different tiles on the rows where the band is not uniform (the bottom row 'L M N N O'",
+    "would come out 'L M N M N N O'), which is exactly the seam artefact this field exists to",
+    "avoid. Omit 'run' entirely for an atlas - a sheet with no run band never grows, it only",
+    "hands out slices.",
+    "",
+    "NOTHING IS RETIRED. All 43 legacy so2h_menu tiles stay registered below as 1x1 sheets so",
+    "no existing draw call goes dark. New sheets only give descriptor rows something better to",
+    "point at, one reversible line at a time."
+  ],
+
+  "otrFolder": "textures/so2h_menu",
+  "defaultFormat": "rgba32",
+
+  "sheets": [
+    {
+      "name": "gSo2hSheetFrameFilled",
+      "file": "gSo2hSheetFrameFilled.rgba32.png",
+      "unit": 64,
+      "grid": [5, 5],
+      "run": { "cols": [2, 2], "rows": [2, 2] },
+      "note": "Contentless-filled. The only textbook nine-slice of the five: tile map A B B C D / E F F F G / H F F F I / J F F F K / L M N N O, single self-tiling opaque interior F. Primary body panel."
+    },
+    {
+      "name": "gSo2hSheetFrameEmpty",
+      "file": "gSo2hSheetFrameEmpty.rgba32.png",
+      "unit": 64,
+      "grid": [5, 5],
+      "run": { "cols": [2, 2], "rows": [2, 2] },
+      "hollowInterior": true,
+      "note": "Empty_Frame. Its centre cell is fully transparent ON PURPOSE - this is the frame you put over live content - so hollowInterior waives the generator's transparent-run-cell check. Hand-packed with cross-row reuse (A B B C D / E F G H I / J K L J K / M N B O P / Q R G G S). Interior is decorated, not flat, so it grows well horizontally and is best kept near native height."
+    },
+    {
+      "name": "gSo2hSheetFrameRaising",
+      "file": "gSo2hSheetFrameRaising.rgba32.png",
+      "unit": 64,
+      "grid": [5, 5],
+      "run": { "cols": [2, 2], "rows": [2, 2] },
+      "note": "Raising_Window. 23 of 25 cells unique; top row A B B C D."
+    },
+    {
+      "name": "gSo2hSheetFrameBacked",
+      "file": "gSo2hSheetFrameBacked.rgba32.png",
+      "unit": 64,
+      "grid": [5, 5],
+      "run": { "cols": [2, 2], "rows": [2, 2] },
+      "note": "Backed_Frame. Same tile-identity map as Raising."
+    },
+    {
+      "name": "gSo2hSheetFramePopup",
+      "file": "gSo2hSheetFramePopup.rgba32.png",
+      "unit": 64,
+      "grid": [5, 5],
+      "run": { "cols": [2, 2], "rows": [2, 2] },
+      "note": "Replacement-technicalUI_Popup. Genuinely a different frame, not a shifted copy: A B C C D / E F G H I / J K L M N / O P Q R S / T U U V W."
+    },
+
+    {
+      "name": "gSo2hSheetSongBackdrop",
+      "file": "gSo2hSheetSongBackdrop.rgba32.png",
+      "unit": 32,
+      "grid": [8, 4],
+      "run": { "cols": [2, 2] },
+      "note": "Horizontal extendable strip. Rows 0 and 3 are fully transparent padding; rows 1-2 are cap + repeating middle + cap (B C C C C C C D / E F G G G G G H). No vertical run band - it was not drawn to grow downward."
+    },
+
+    {
+      "name": "gSo2hSheetCornerFix",
+      "file": "gSo2hSheetCornerFix.rgba32.png",
+      "unit": 64,
+      "grid": [3, 3],
+      "note": "Atlas, 9 unique corner patches for where two panels meet. No repeated tiles."
+    },
+    {
+      "name": "gSo2hSheetBigButton",
+      "file": "gSo2hSheetBigButton.rgba32.png",
+      "unit": 64,
+      "grid": [2, 2],
+      "note": "Atlas, 4 button container states. No repeated tiles."
+    },
+    {
+      "name": "gSo2hSheetContentBox",
+      "file": "gSo2hSheetContentBox.rgba32.png",
+      "unit": 32,
+      "grid": [4, 4],
+      "note": "Atlas, 16 content-container pieces. No repeated tiles."
+    },
+    {
+      "name": "gSo2hSheetMiniButton",
+      "file": "gSo2hSheetMiniButton.rgba32.png",
+      "unit": 32,
+      "grid": [4, 4],
+      "note": "Atlas, 16 mini-button and textbox pieces. No repeated tiles."
+    },
+
+    {
+      "name": "gSo2hSheetItems",
+      "file": "gSo2hSheetItems.rgba32.png",
+      "unit": 32,
+      "grid": [14, 15],
+      "note": "The item and button icon atlas, 448x480, 167/210 cells unique. Addressed by So2h_Ui_Slice(sheet, col, row). No named slices yet: the sheet carries only 4 of the 6 medallions and no spiritual stones, and the decision was to source ALL medallions from the OoT rips behind a one-line art-source table rather than mix two art origins on one row."
+    }
+  ],
+
+  "legacyTiles": {
+    "$comment": "The 43 pieces cut by tools/so2h_slice_menu_sheet.py. Each is its own 1x1 sheet at its own native size; unit is taken from the file. KEEP - additive, never replaced.",
+    "unitFromFile": true,
+    "names": [
+      "gSo2hBtnA",
+      "gSo2hBtnArrowDown",
+      "gSo2hBtnArrowLeft",
+      "gSo2hBtnArrowRight",
+      "gSo2hBtnArrowUp",
+      "gSo2hBtnB",
+      "gSo2hBtnCDown",
+      "gSo2hBtnCLeft",
+      "gSo2hBtnCRight",
+      "gSo2hBtnCUp",
+      "gSo2hBtnCircle",
+      "gSo2hBtnCross",
+      "gSo2hCellTile",
+      "gSo2hCrossRed",
+      "gSo2hFrameBL",
+      "gSo2hFrameBR",
+      "gSo2hFrameBottom",
+      "gSo2hFrameFill",
+      "gSo2hFrameLeft",
+      "gSo2hFrameRight",
+      "gSo2hFrameTL",
+      "gSo2hFrameTR",
+      "gSo2hFrameTop",
+      "gSo2hMarkPawnCyan",
+      "gSo2hMarkPawnCyanX",
+      "gSo2hMarkPawnDark",
+      "gSo2hMarkPawnLight",
+      "gSo2hMarkT",
+      "gSo2hMarkTriDark",
+      "gSo2hMarkTriGold",
+      "gSo2hMarkVs",
+      "gSo2hNoteBlack",
+      "gSo2hNoteBlue",
+      "gSo2hNoteLocked",
+      "gSo2hNoteWhite",
+      "gSo2hRoundTile",
+      "gSo2hSlotDark",
+      "gSo2hSlotHatch",
+      "gSo2hSlotLight",
+      "gSo2hSlotRecess",
+      "gSo2hStaffClef",
+      "gSo2hStaffLines",
+      "gSo2hWindow"
+    ]
+  }
+}
