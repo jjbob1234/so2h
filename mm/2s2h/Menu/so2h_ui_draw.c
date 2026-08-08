@@ -444,7 +444,7 @@ static s32 So2h_UiSolveFrameAxis(s32 n, s32 lo, s32 hi, f32 cell, f32 span, s32 
 #define SO2H_UI_FRAME_MAX_CELLS 96
 
 static Gfx* So2h_UiDrawFrame(Gfx* gfx, const So2hUiSheetDef* sheet, const So2hUiRect* dst, const So2hUiRect* clip,
-                             s32 repeat) {
+                             s32 repeat, s32 hollow) {
     f32 xPos[SO2H_UI_FRAME_MAX_CELLS];
     f32 xSize[SO2H_UI_FRAME_MAX_CELLS];
     s16 xCell[SO2H_UI_FRAME_MAX_CELLS];
@@ -456,6 +456,15 @@ static Gfx* So2h_UiDrawFrame(Gfx* gfx, const So2hUiSheetDef* sheet, const So2hUi
     s32 ny;
     s32 ix;
     s32 iy;
+    // The hole, in whole CELL INDICES. The rings are tile-aligned by construction, so this is
+    // an exact integer count of tiles and never a pixel scan.
+    // Measured from the CONTENT ring, not the border ring: only the fill cells are dropped, so
+    // every decorative ring the art carries still draws. On a 5x5 @64 frame (content = 2 tiles)
+    // that leaves exactly the one centre cell unrendered.
+    s32 holeL = (hollow && (sheet->unit > 0)) ? (sheet->contentL / sheet->unit) : 0;
+    s32 holeT = (hollow && (sheet->unit > 0)) ? (sheet->contentT / sheet->unit) : 0;
+    s32 holeR = (hollow && (sheet->unit > 0)) ? (sheet->cols - 1 - (sheet->contentR / sheet->unit)) : -1;
+    s32 holeB = (hollow && (sheet->unit > 0)) ? (sheet->rows - 1 - (sheet->contentB / sheet->unit)) : -1;
 
     nx = So2h_UiSolveFrameAxis(sheet->cols, sheet->runColLo, sheet->runColHi, cell, dst->x1 - dst->x0, repeat, xPos,
                                xSize, xCell, SO2H_UI_FRAME_MAX_CELLS);
@@ -469,6 +478,13 @@ static Gfx* So2h_UiDrawFrame(Gfx* gfx, const So2hUiSheetDef* sheet, const So2hUi
             f32 sy;
             f32 sw;
             f32 sh;
+
+            // Inside the border ring on BOTH axes: this is the fill, so emit nothing and let
+            // whatever is behind the frame show through.
+            if (hollow && (xCell[ix] >= holeL) && (xCell[ix] <= holeR) && (yCell[iy] >= holeT) &&
+                (yCell[iy] <= holeB)) {
+                continue;
+            }
 
             cellRect.x0 = dst->x0 + xPos[ix];
             cellRect.x1 = cellRect.x0 + xSize[ix];
@@ -582,12 +598,19 @@ Gfx* So2h_UiDraw_Slice(Gfx* gfx, u16 sheetId, u16 slice, const So2hUiRect* rect,
     gfx = So2h_UiSetupMode(gfx, sheet->fmt, r, g, b, a);
 
     switch (mode) {
+        // NINESLICE and RUN are the same operation; whether the middle repeats or stretches is
+        // a property of the ART, so it comes off the sheet rather than the call site. These
+        // interiors are self-tiling and stretching them smears the texture, so a descriptor row
+        // asking for NINESLICE on a run-grow sheet still gets whole native tiles.
         case SO2H_UI_DRAW_NINESLICE:
-            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, 0);
+        case SO2H_UI_DRAW_RUN:
+            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, sheet->grow != SO2H_UI_GROW_STRETCH, false);
             break;
 
-        case SO2H_UI_DRAW_RUN:
-            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, 1);
+        // The frame's chrome only - the fill cells are skipped, so the rect has a real hole in
+        // it. Same solver, same seams, one flag.
+        case SO2H_UI_DRAW_RING:
+            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, sheet->grow != SO2H_UI_GROW_STRETCH, true);
             break;
 
         case SO2H_UI_DRAW_TILE:

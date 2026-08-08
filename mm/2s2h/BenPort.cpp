@@ -957,6 +957,10 @@ static struct {
     bool processing;
 } audio;
 
+// SO2H [Menu] pause-menu voice pool, mixed in at the end of each audio block. Declared here
+// rather than pulling the menu header into the port layer.
+extern "C" void So2h_UiSfx_MixInto(int16_t* out, int32_t frames);
+
 void OTRAudio_Thread() {
     while (audio.running) {
         {
@@ -988,6 +992,11 @@ void OTRAudio_Thread() {
             AudioMgr_CreateNextAudioBuffer(audio_buffer + i * (num_audio_samples * NUM_AUDIO_CHANNELS),
                                            num_audio_samples);
         }
+
+        // SO2H [Menu]: the pause menu mixes its own voices into the block the game just filled,
+        // one step before it goes out. See mm/2s2h/Menu/so2h_ui_sfx.c for why it cannot use the
+        // sfx bank (BANK_SYSTEM holds two channels) and how it obeys the volume CVars.
+        So2h_UiSfx_MixInto(audio_buffer, (int32_t)(num_audio_samples * AUDIO_FRAMES_PER_UPDATE));
 
         AudioPlayer_Play((u8*)audio_buffer,
                          num_audio_samples * (sizeof(int16_t) * NUM_AUDIO_CHANNELS * AUDIO_FRAMES_PER_UPDATE));
@@ -1910,6 +1919,12 @@ extern "C" SoundFontSample* ResourceMgr_LoadAudioSample(const char* path) {
     return (SoundFontSample*)ResourceGetDataByName(path);
 }
 #endif
+
+// SO2H [Menu] Fetch a Sample resource by archive path. The vanilla ResourceMgr_LoadAudioSample above
+// is behind #if 0, and the menu needs raw custom samples (decoded ogg) to bind into a soundfont slot.
+extern "C" Sample* ResourceMgr_LoadSampleByName(const char* path) {
+    return (Sample*)ResourceGetDataByName(path);
+}
 
 extern "C" SoundFont* ResourceMgr_LoadAudioSoundFontByName(const char* path) {
     return (SoundFont*)ResourceGetDataByName(path);

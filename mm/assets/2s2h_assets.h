@@ -542,3 +542,10 @@ static const ALIGN_ASSET(2) char gSo2hStaffLinesTex[] = dgSo2hStaffLines;
 
 #define dgSo2hWindow "__OTR__textures/so2h_menu/gSo2hWindow"
 static const ALIGN_ASSET(2) char gSo2hWindowTex[] = dgSo2hWindow;
+
+// SO2H menu SFX. Custom ogg samples shipped raw through mm/assets/custom/audio/so2h_menu into
+// 2ship.o2r, each described by a Sample XML next to it. Bound into the SYSTEM sfx bank's soundfont
+// at runtime by so2h_ui_sfx.c so they play through the normal Audio_PlaySfx path (SFX volume
+// slider, mute and pause all apply). Paths are archive paths - the XML, not the ogg.
+#define dgSo2hSfxPlaced "audio/so2h_menu/so2h_menu_placed.xml"
+#define dgSo2hSfxSlide "audio/so2h_menu/so2h_menu_slide.xml"

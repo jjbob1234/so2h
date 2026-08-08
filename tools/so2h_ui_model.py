@@ -18,6 +18,8 @@ tools/so2h_ui_sim.py --selfcheck prints the constants side by side so the drift 
 Nothing here imports Pillow; the renderer does that on its own.
 """
 
+import math
+
 # --- constants, mirrored from so2h_ui.h and so2h_ui_layout.c -----------------------------
 MAX_NODES = 192
 MAX_PAGES = 12
@@ -30,6 +32,37 @@ MAX_SHEETS = 64
 INVALID = 0xFFFF
 
 MORPH_FRAMES = 14
+
+# ---------------------------------------------------------------------------------------
+# The open / close performance. Every number the animation has lives in this block.
+# ---------------------------------------------------------------------------------------
+REVEAL_FRAMES = 22       # how long one window's entrance takes
+GROW_FROM = 0.10         # a GROW window starts at this fraction of its solved height
+REVEAL_JITTER = 6        # max extra frames of per-node desync, drawn per open
+# POP: arrive early, sail a little PAST the resting place, then snap back onto it.
+POP_SETTLE = 0.65        # fraction of the entrance spent travelling; the rest is the pop
+POP_OVER = 6.0           # design units it overshoots by - ABSOLUTE, not a share of travel,
+                         # so a node that enters from off-screen still only pops "a little"
+# The bulge is pulse(u*u), not a sine: squaring u leans the peak late (it tops out at
+# u = 0.707), so the node drifts out and snaps back fast, and the overlay needs no sinf.
+# Close: everything gathers UPWARD for a beat, then the floor drops out.
+CLOSE_RISE_F = 6         # frames of build-up
+CLOSE_RISE_U = 5.0       # design units it rises during the build-up
+CLOSE_GRAVITY = 2.6      # units per frame^2 once it lets go
+CLOSE_JITTER = 4         # max frames of per-node desync on the way out
+CLOSE_SQUASH = 0.55      # vertical stretch ceiling at terminal speed
+CLOSE_PINCH = 0.30       # how much of that stretch is paid back as horizontal squeeze
+
+
+def hash_u32(x):
+    """Deterministic per-node noise. Mirrors So2h_UiHash - a fixed integer scramble, NOT
+    rand(), so a frame can be re-solved as many times as it likes and the jitter a node was
+    dealt this open does not change underneath it."""
+    x = (x * 2654435761) & 0xFFFFFFFF
+    x ^= x >> 15
+    x = (x * 2246822519) & 0xFFFFFFFF
+    x ^= x >> 13
+    return x
 OVERSHOOT = 0.06
 ASPECT_WIDE = 1.55
 ASPECT_43 = 1.45
@@ -65,9 +98,23 @@ START, END, STRETCH, CENTER, FILL = range(5)
 # clip
 CLIP_INHERIT, CLIP_SELF, CLIP_SPILL = range(3)
 # reveal
-REVEAL_NONE, REVEAL_FADE, REVEAL_SLIDE, REVEAL_UNROLL = range(4)
+(REVEAL_NONE, REVEAL_FADE, REVEAL_SLIDE, REVEAL_UNROLL, REVEAL_SWAP,
+ REVEAL_GROW, REVEAL_FALL, REVEAL_POP) = range(8)
+# reveal entry edge. AUTO derives it: a node leaves and returns through the screen edge it
+# is already nearest to, so a window that lives bottom-left enters from the bottom-left with
+# no per-node direction authored anywhere.
+FROM_AUTO, FROM_LEFT, FROM_RIGHT, FROM_TOP, FROM_BOTTOM = range(5)
 # draw modes
-DRAW_NONE, DRAW_STRETCH, DRAW_NATIVE, DRAW_NINESLICE, DRAW_TILE, DRAW_RUN = range(6)
+DRAW_NONE, DRAW_STRETCH, DRAW_NATIVE, DRAW_NINESLICE, DRAW_TILE, DRAW_RUN, DRAW_RING = range(7)
+# DRAW_RING: NINESLICE/RUN with every cell inside the outer border ring skipped, so the
+# frame has a real hole where its fill would be. Mirrors SO2H_UI_DRAW_RING in so2h_ui.h.
+
+# Which ring of the parent frame a child solves against. Mirrors So2hUiAttach.
+ATTACH_CONTENT, ATTACH_BORDER, ATTACH_EDGE = range(3)
+
+# How a frame fills space bigger than its art. Mirrors So2hUiGrow. Lives on the SHEET, not
+# the call site - these interiors are self-tiling, so stretching them smears the texture.
+GROW_RUN, GROW_STRETCH = range(2)
 
 CANON_43, CANON_WIDE = 0, 1
 
@@ -90,6 +137,17 @@ def smoothstep(t):
     """So2h_Ui_SmoothStep, carried over unchanged from so2h_quest_layout.c."""
     t = clampf(t, 0.0, 1.0)
     return t * t * (3.0 - (2.0 * t))
+
+
+def fall_ease(t):
+    """Gravity, not easing: accelerate all the way down, land, then a single small bounce.
+    Mirrors So2h_Ui_FallEase. Used by REVEAL_FALL so slots drop rather than glide."""
+    t = clampf(t, 0.0, 1.0)
+    if t <= 0.82:
+        u = t / 0.82
+        return u * u
+    u = (t - 0.82) / 0.18
+    return 1.0 - (0.07 * (4.0 * u * (1.0 - u)))
 
 
 class Rect(object):
@@ -133,12 +191,28 @@ class Axis(object):
 
 
 class Style(object):
-    __slots__ = ("sheet", "slice", "drawMode", "reveal", "rgb", "alpha", "layer")
+    __slots__ = ("sheet", "slice", "drawMode", "reveal", "rgb", "alpha", "layer", "scale",
+                 "shadow", "revealFrom", "revealDelay", "revealJitter")
 
     def __init__(self, sheet=INVALID, slice=INVALID, drawMode=DRAW_NONE, reveal=REVEAL_NONE,
-                 rgb=(255, 255, 255), alpha=255, layer=0):
+                 rgb=(255, 255, 255), alpha=255, layer=0, scale=1.0, shadow=True,
+                 revealFrom=FROM_AUTO, revealDelay=0, revealJitter=REVEAL_JITTER):
         self.sheet, self.slice, self.drawMode = sheet, slice, drawMode
         self.reveal, self.rgb, self.alpha, self.layer = reveal, rgb, alpha, layer
+        # Per-node art scale. The collage puts the same sheets on screen at different
+        # sizes; a frame's TILE gets this big, so a scaled window keeps its border art in
+        # proportion instead of stretching. Rings scale with it or content drifts.
+        self.scale = float(scale)
+        # Programmatic drop shadow: DEFAULT ON, opted out per node. Mirrors
+        # So2hUiStyle.noShadow (inverted here so the scene reads shadow=False).
+        self.shadow = bool(shadow)
+        # Entry edge and stagger, both optional. The stagger is in frames and is the ONLY
+        # thing that orders the open sequence: no timeline, no keyframes, no per-window code.
+        self.revealFrom = revealFrom
+        self.revealDelay = int(revealDelay)
+        # Per-node desync, in frames, drawn from the open's seed. Default is ON: no two opens
+        # land in the same order, so the menu never feels like a canned cutscene.
+        self.revealJitter = int(revealJitter)
 
 
 class Desc(object):
@@ -146,13 +220,15 @@ class Desc(object):
 
     def __init__(self, id, parent, kind=PANEL, state=ENABLED, layout=FREE, clip=CLIP_INHERIT,
                  x=None, y=None, cols=0, rows=0, gap=0.0, pitch=0.0, count=0, growEnd=0,
-                 style=None, cellState=None, nav=(INVALID, INVALID, INVALID, INVALID), name=""):
+                 style=None, cellState=None, nav=(INVALID, INVALID, INVALID, INVALID), name="",
+                 attach=0):
         self.id, self.parent, self.kind, self.state = id, parent, kind, state
         self.layout, self.clip = layout, clip
         self.x = x or Axis(FILL)
         self.y = y or Axis(FILL)
         self.cols, self.rows, self.gap = cols, rows, gap
         self.pitch, self.count, self.growEnd = pitch, count, growEnd
+        self.attach = attach   # 0 CONTENT, 1 BORDER, 2 EDGE
         self.style = style or Style()
         self.cellState = cellState
         self.navUp, self.navDown, self.navLeft, self.navRight = nav
@@ -165,7 +241,9 @@ class Variant(object):
 
 
 class Node(object):
-    __slots__ = ("rect", "canonRect", "clipRect", "alpha", "revealT", "state", "visible", "focusable")
+    __slots__ = ("rect", "canonRect", "clipRect", "alpha", "revealT", "state", "visible",
+                 "focusable", "swapT", "swapOut", "swapPending", "swapApply", "revealHold",
+                 "closeF")
 
     def __init__(self):
         self.rect = Rect()
@@ -173,6 +251,12 @@ class Node(object):
         self.clipRect = Rect()
         self.alpha = 1.0
         self.revealT = 0.0
+        self.revealHold = 0
+        self.closeF = -1        # frames into this node's exit; -1 = not closing
+        self.swapT = 1.0
+        self.swapOut = False
+        self.swapPending = False
+        self.swapApply = None
         self.state = ENABLED
         self.visible = True
         self.focusable = False
@@ -208,6 +292,12 @@ class Ctx(object):
         self.stateOverride = [None] * len(self.desc)
         self.focus = INVALID
         self.showHiddenPages = False
+
+        # One seed per open. Every node's jitter is hash_u32(node ^ openSeed), so the desync
+        # is unique per open but stable inside one open no matter how often we re-solve.
+        self.openSeed = 1
+        self.closing = False
+        self.closeFrames = 0
 
         self.morphFrames = 0
         self.morphT = 0.0
@@ -293,6 +383,27 @@ class Ctx(object):
             size = 0.0
         return parentPos + pos, size
 
+    # Ring table, injected by the renderer from sheets.json: name -> (borderTiles,
+    # contentTiles, unit). Rings are WHOLE TILES - a 5x5 @64 frame is an outer border ring,
+    # an inner border ring, then a centre cell that tiles the fill, so it is (1, 2, 64).
+    # Empty in a bare sim, which then behaves like every ring is zero.
+    rings = {}
+
+    def ring_px(self, sheet, attach, scale=1.0):
+        """Ring inset in design units at the current tile scale. Mirrors So2h_UiSheet_RingPx."""
+        if attach == ATTACH_EDGE:
+            return (0.0, 0.0, 0.0, 0.0)
+        e = self.rings.get(sheet)
+        if not e:
+            return (0.0, 0.0, 0.0, 0.0)
+        borderT, contentT, unit = e
+        n = borderT if attach == ATTACH_BORDER else contentT
+        # tile/TILE_SRC, not tile/unit - this is the same scalar draw_frame sizes a cell
+        # with. Dividing by the sheet's own unit would halve the rings on a 64-texel sheet
+        # while its tiles drew at full size.
+        v = n * unit * (self.tile / TILE_SRC) * scale
+        return (v, v, v, v)
+
     def find_variant(self, id, canon):
         for v in self.variants:
             if v.node == id and v.canon == canon:
@@ -315,8 +426,25 @@ class Ctx(object):
             ax = v.x if (v and v.x) else d.x
             ay = v.y if (v and v.y) else d.y
             pr = self.node[d.parent].canonRect[canon]
-            x, w = self.solve_axis(ax, pr.x0 / sx, pr.w / sx)
-            y, h = self.solve_axis(ay, pr.y0 / sy, pr.h / sy)
+
+            # Solve against the parent's attached ring. Mirrors So2h_UiSolveCanon: a framed
+            # parent owns both border rings, so a child that ignores them lands under chrome.
+            bl = bt = br = bb = 0.0
+            pstyle = self.desc[d.parent].style
+            if pstyle.drawMode in (DRAW_NINESLICE, DRAW_RUN, DRAW_TILE, DRAW_RING):
+                bl, bt, br, bb = self.ring_px(pstyle.sheet, getattr(d, "attach", 0),
+                                              getattr(pstyle, "scale", 1.0))
+            px_, py_ = pr.x0 + bl, pr.y0 + bt
+            pw_, ph_ = pr.w - bl - br, pr.h - bt - bb
+            if pw_ < 0.0:
+                px_ += pw_ * 0.5
+                pw_ = 0.0
+            if ph_ < 0.0:
+                py_ += ph_ * 0.5
+                ph_ = 0.0
+
+            x, w = self.solve_axis(ax, px_ / sx, pw_ / sx)
+            y, h = self.solve_axis(ay, py_ / sy, ph_ / sy)
             out.x0, out.y0 = x * sx, y * sy
             out.x1, out.y1 = (x + w) * sx, (y + h) * sy
 
@@ -339,6 +467,22 @@ class Ctx(object):
             if n.clipRect.y1 < n.clipRect.y0:
                 n.clipRect.y1 = n.clipRect.y0
 
+    def reveal_delay(self, i):
+        """Table delay plus this open's random slack for this node. The table sets the
+        CHOREOGRAPHY (which window is early, which is late); the jitter makes sure no two
+        opens are ever bar-for-bar identical. Mirrors So2h_UiRevealDelay."""
+        st = self.desc[i].style
+        j = st.revealJitter
+        if j <= 0:
+            return st.revealDelay
+        return st.revealDelay + (hash_u32(i ^ self.openSeed) % (j + 1))
+
+    def close_delay(self, i):
+        """Same idea on the way out, but tighter - a beat of slop, not a second stagger."""
+        if CLOSE_JITTER <= 0:
+            return 0
+        return hash_u32((i * 7919) ^ (self.openSeed + 0x9E3779B9)) % (CLOSE_JITTER + 1)
+
     def advance_reveals(self):
         for i, d in enumerate(self.desc):
             n = self.node[i]
@@ -350,12 +494,226 @@ class Ctx(object):
             if d.style.reveal == REVEAL_NONE:
                 n.revealT = 1.0
             elif n.revealT < 1.0:
-                n.revealT = min(1.0, n.revealT + (1.0 / MORPH_FRAMES))
+                # The stagger is spent BEFORE the node starts moving, so every window shares
+                # one clock and the sequence is just a column of delay numbers in the table.
+                if n.revealHold < self.reveal_delay(i):
+                    n.revealHold += 1
+                else:
+                    n.revealT = min(1.0, n.revealT + (1.0 / REVEAL_FRAMES))
             n.alpha = base
             if d.style.reveal == REVEAL_FADE:
                 n.alpha *= smoothstep(n.revealT)
             if n.state == DISABLED:
                 n.alpha *= 0.45
+
+    # -- slide-on ------------------------------------------------------------------------
+    def slide_edge(self, i):
+        """The screen edge a SLIDE node enters through, and how far off it has to start.
+
+        AUTO is DERIVED from the solved rect: whichever screen edge the node's own centre is
+        closest to. Distance is measured from the rect, so a node only ever travels exactly
+        far enough to be fully hidden - no baked travel, and it holds at any aspect.
+        """
+        d, r = self.desc[i], self.node[i].rect
+        e = d.style.revealFrom
+        if d.style.reveal == REVEAL_FALL:
+            e = FROM_TOP     # a thing that falls comes from above. Never derived.
+        if e == FROM_AUTO:
+            cx, cy = (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5
+            dl, dr = cx - self.screenX0, self.screenX1 - cx
+            dt, db = cy, DESIGN_H - cy
+            m = min(dl, dr, dt, db)
+            e = (FROM_LEFT if m == dl else FROM_RIGHT if m == dr else
+                 FROM_TOP if m == dt else FROM_BOTTOM)
+        if e == FROM_LEFT:
+            return (-(r.x1 - self.screenX0), 0.0)
+        if e == FROM_RIGHT:
+            return (self.screenX1 - r.x0, 0.0)
+        if e == FROM_TOP:
+            return (0.0, -r.y1)
+        return (0.0, DESIGN_H - r.y0)
+
+    def advance_slides(self):
+        """SLIDE, FALL and POP are the same displacement with a different curve: SLIDE eases
+        in and out, FALL accelerates and bounces once, POP arrives early and overshoots.
+        All three derive travel from the rect, so none of them bakes a distance."""
+        for i, d in enumerate(self.desc):
+            rv = d.style.reveal
+            if rv != REVEAL_SLIDE and rv != REVEAL_FALL and rv != REVEAL_POP:
+                continue
+            n = self.node[i]
+            if n.revealT >= 1.0:
+                continue
+            dx, dy = self.slide_edge(i)
+            t = n.revealT
+            over = 0.0
+            if rv == REVEAL_FALL:
+                k = 1.0 - fall_ease(t)
+            elif rv == REVEAL_POP:
+                # The travel finishes EARLY (at POP_SETTLE), and the frames left over are
+                # spent past the target: one bulge out to POP_OVER and back to exactly 0.
+                k = 1.0 - smoothstep(min(1.0, t / POP_SETTLE))
+                if t > POP_SETTLE:
+                    u = (t - POP_SETTLE) / (1.0 - POP_SETTLE)
+                    over = -POP_OVER * pulse(u * u)
+            else:
+                k = 1.0 - smoothstep(t)
+            if over != 0.0:
+                # Overshoot runs along the SAME axis the node entered on, so it is derived
+                # from the travel vector and needs no per-node direction of its own.
+                L = math.hypot(dx, dy) or 1.0
+                self.offset_subtree(i, (dx * k) + (over * dx / L),
+                                    (dy * k) + (over * dy / L))
+            else:
+                self.offset_subtree(i, dx * k, dy * k)
+
+    # -- grow-open -----------------------------------------------------------------------
+    def advance_grows(self):
+        """REVEAL_GROW: the node starts as a short letterbox pinned at its own TOP edge and
+        opens downward to its solved height. Everything inside it is scaled with it, so a
+        window declares nothing extra to animate its contents."""
+        for i, d in enumerate(self.desc):
+            if d.style.reveal != REVEAL_GROW:
+                continue
+            n = self.node[i]
+            if n.revealT >= 1.0:
+                continue
+            k = GROW_FROM + ((1.0 - GROW_FROM) * smoothstep(n.revealT))
+            self.stretch_subtree(i, 1.0, k, n.rect.x0, n.rect.y0)
+
+    def stretch_subtree(self, root, sx, sy, px, py):
+        """Scale a node and its descendants about the pivot (px, py) in design units."""
+        moved = {root}
+        for j in range(root, len(self.desc)):
+            if j == root or self.desc[j].parent in moved:
+                moved.add(j)
+                for r in (self.node[j].rect, self.node[j].clipRect):
+                    r.x0 = px + ((r.x0 - px) * sx)
+                    r.x1 = px + ((r.x1 - px) * sx)
+                    r.y0 = py + ((r.y0 - py) * sy)
+                    r.y1 = py + ((r.y1 - py) * sy)
+
+    # -- the exit ------------------------------------------------------------------------
+    def open(self):
+        """Restart the entrance with a fresh desync seed. Mirrors So2h_Ui_Open."""
+        self.closing = False
+        self.closeFrames = 0
+        self.openSeed = hash_u32(self.openSeed + 0x2545F491) or 1
+        for n in self.node:
+            n.revealT = 0.0
+            n.revealHold = 0
+            n.closeF = -1
+            # A SWAP node opens the same way it comes back from a swap: up off the bottom.
+            n.swapT = 0.0
+            n.swapOut = False
+            n.swapPending = False
+
+    def close(self):
+        """Mirrors So2h_Ui_Close. The close is not the open played backwards: everything
+        gathers UPWARD for a few frames of held breath, then the floor drops out and each
+        node falls under gravity, stretching as it picks up speed."""
+        self.closing = True
+        self.closeFrames = 0
+        for n in self.node:
+            n.closeF = 0
+
+    def close_done(self):
+        if not self.closing:
+            return False
+        for i, n in enumerate(self.node):
+            if not n.visible:
+                continue
+            f = n.closeF - self.close_delay(i) - CLOSE_RISE_F
+            if f < 0:
+                return False
+            if (0.5 * CLOSE_GRAVITY * f * f) < (DESIGN_H + 40.0):
+                return False
+        return True
+
+    def advance_close(self):
+        if not self.closing:
+            return
+        self.closeFrames += 1
+        for i, d in enumerate(self.desc):
+            n = self.node[i]
+            if n.closeF < 0:
+                continue
+            n.closeF += 1
+            f = n.closeF - self.close_delay(i)
+            if f <= 0:
+                continue
+            if f <= CLOSE_RISE_F:
+                # build-up: rise, easing OUT so it looks like it is being pulled up short
+                u = smoothstep(f / float(CLOSE_RISE_F))
+                self.offset_subtree(i, 0.0, -CLOSE_RISE_U * u)
+                continue
+            g = f - CLOSE_RISE_F
+            dy = -CLOSE_RISE_U + (0.5 * CLOSE_GRAVITY * g * g)
+            v = CLOSE_GRAVITY * g
+            sy = 1.0 + min(CLOSE_SQUASH, v * 0.03)
+            # Only a FRACTION of the vertical stretch is paid back horizontally: a strict
+            # 1/sy conserves area but turns a wide window into a noodle, which reads as a
+            # bug rather than as speed.
+            sx = 1.0 / (1.0 + (CLOSE_PINCH * (sy - 1.0)))
+            cx = (n.rect.x0 + n.rect.x1) * 0.5
+            cy = (n.rect.y0 + n.rect.y1) * 0.5
+            self.stretch_subtree(i, sx, sy, cx, cy)
+            self.offset_subtree(i, 0.0, dy)
+
+    # -- off-screen swap -----------------------------------------------------------------
+    def swap(self, i, apply=None):
+        """Ask a REVEAL_SWAP node to change content off-screen. Mirrors So2h_Ui_Swap."""
+        if self.desc[i].style.reveal != REVEAL_SWAP:
+            if apply:
+                apply(i)
+            return False
+        n = self.node[i]
+        n.swapPending = True
+        n.swapApply = apply
+        n.swapOut = True
+        return True
+
+    def advance_swaps(self):
+        """Drives REVEAL_SWAP nodes off the bottom of the screen and back.
+
+        The displacement is DERIVED from the solved rect (how far this node's top is from
+        the screen bottom), never from a baked travel distance - so a node that comes back
+        twice as tall still ends up fully hidden on the way out, and a node whose rect the
+        solver moved for a different aspect needs no new numbers.
+        """
+        for i, d in enumerate(self.desc):
+            if d.style.reveal != REVEAL_SWAP:
+                continue
+            n = self.node[i]
+            if n.swapOut:
+                n.swapT = max(0.0, n.swapT - (1.0 / MORPH_FRAMES))
+                if n.swapT <= 0.0:
+                    # Fully off-screen: this is the ONLY moment content is allowed to change.
+                    fn = getattr(n, "swapApply", None)
+                    if n.swapPending and fn:
+                        fn(i)
+                    n.swapPending = False
+                    n.swapOut = False
+            elif n.swapT < 1.0:
+                # On the way IN, a SWAP node is also part of the opening performance, so its
+                # rise waits out the same revealDelay + jitter every other window does. That
+                # is why the context menu can be given its own beat without a second
+                # mechanism: the entrance and the content swap are the same move.
+                if n.revealHold >= self.reveal_delay(i):
+                    n.swapT = min(1.0, n.swapT + (1.0 / MORPH_FRAMES))
+            if n.swapT < 1.0:
+                dy = (1.0 - smoothstep(n.swapT)) * (DESIGN_H - n.rect.y0)
+                self.offset_subtree(i, 0.0, dy)
+
+    def offset_subtree(self, root, dx, dy):
+        moved = {root}
+        for j in range(root, len(self.desc)):
+            if j == root or self.desc[j].parent in moved:
+                moved.add(j)
+                r = self.node[j].rect
+                r.x0 += dx; r.x1 += dx; r.y0 += dy; r.y1 += dy
+                c = self.node[j].clipRect
+                c.x0 += dx; c.x1 += dx; c.y0 += dy; c.y1 += dy
 
     # -- run / scroll --------------------------------------------------------------------
     def solve_run(self, i, span, pitch):
@@ -541,6 +899,10 @@ class Ctx(object):
                 self.solve_scroll(i, self.node[i].rect.h, pitch)
 
         self.advance_reveals()
+        self.advance_slides()
+        self.advance_grows()
+        self.advance_swaps()
+        self.advance_close()
 
     def settle(self, frames=240):
         for _ in range(frames):

@@ -74,6 +74,18 @@ typedef struct So2hUiCtx {
     s16 activeCanon;
     s16 morphFrames;
 
+    // The opening / closing performance. openSeed is re-drawn once per So2h_Ui_Open and every
+    // node's desync this open is So2h_UiHash(id ^ openSeed) - deterministic, so a frame may be
+    // re-solved any number of times without the jitter a node was dealt changing underneath it.
+    u32 openSeed;
+    s32 closing;
+    s32 closeFrames;
+
+    // REVEAL_SWAP callbacks, parallel to node[]. Kept here rather than in So2hUiNode so the
+    // public node struct stays plain data.
+    So2hUiSwapFn swapApply[SO2H_UI_MAX_NODES];
+    void* swapArg[SO2H_UI_MAX_NODES];
+
     So2hUiId focus;
     s32 showHiddenPages;
     s32 initialised;
@@ -105,6 +117,7 @@ s32 So2h_UiSheet_SliceRect(u16 sheet, u16 slice, s16* sx, s16* sy, s16* sw, s16*
 s32 So2h_UiSheet_SliceRectF(u16 sheet, u16 slice, f32* sx, f32* sy, f32* sw, f32* sh);
 s32 So2h_UiSheet_Dims(u16 sheet, s16* w, s16* h);
 const void* So2h_UiSheet_Texture(u16 sheet);
+s32 So2h_UiSheet_RingPx(u16 sheet, u8 attach, f32 tilePx, f32* l, f32* t, f32* r, f32* b);
 
 #ifdef __cplusplus
 }

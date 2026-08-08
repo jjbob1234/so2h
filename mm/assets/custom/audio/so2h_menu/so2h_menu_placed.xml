@@ -1,0 +1,3 @@
+<Sample Version="0" Codec="S16" Medium="Ram" bit26="0" Size="49696" CustomFormat="ogg" Path="audio/so2h_menu/so2h_menu_placed.ogg">
+    <ADPCMLoop Start="0" End="24848" Count="0"/>
+</Sample>

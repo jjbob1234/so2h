@@ -309,3 +309,38 @@ f32 So2h_Ui_SmoothStep(f32 t) {
     }
     return t * t * (3.0f - (2.0f * t));
 }
+
+/**
+ * Gravity, not easing: accelerate the whole way down, land, then one small bounce. REVEAL_FALL
+ * reads this instead of SmoothStep, which is the entire difference between a panel that glides
+ * into place and an object that drops into it.
+ */
+f32 So2h_Ui_FallEase(f32 t) {
+    f32 u;
+
+    if (t <= 0.0f) {
+        return 0.0f;
+    }
+    if (t >= 1.0f) {
+        return 1.0f;
+    }
+    if (t <= 0.82f) {
+        u = t / 0.82f;
+        return u * u;
+    }
+    u = (t - 0.82f) / 0.18f;
+    return 1.0f - (0.07f * (4.0f * u * (1.0f - u)));
+}
+
+/**
+ * Deliberately NOT rand(). The solver may run more than once for a single displayed frame, and
+ * a node's jitter must be a pure function of (node id, open seed) so it cannot change halfway
+ * through its own entrance.
+ */
+u32 So2h_UiHash(u32 x) {
+    x *= 2654435761u;
+    x ^= x >> 15;
+    x *= 2246822519u;
+    x ^= x >> 13;
+    return x;
+}

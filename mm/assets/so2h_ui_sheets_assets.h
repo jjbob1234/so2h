@@ -19,6 +19,9 @@ static const ALIGN_ASSET(2) char gSo2hSheetFrameBackedTex[] = dgSo2hSheetFrameBa
 #define dgSo2hSheetFramePopup "__OTR__textures/so2h_menu/gSo2hSheetFramePopup"
 static const ALIGN_ASSET(2) char gSo2hSheetFramePopupTex[] = dgSo2hSheetFramePopup;
 
+#define dgSo2hSheetFrameGlass "__OTR__textures/so2h_menu/gSo2hSheetFrameGlass"
+static const ALIGN_ASSET(2) char gSo2hSheetFrameGlassTex[] = dgSo2hSheetFrameGlass;
+
 #define dgSo2hSheetSongBackdrop "__OTR__textures/so2h_menu/gSo2hSheetSongBackdrop"
 static const ALIGN_ASSET(2) char gSo2hSheetSongBackdropTex[] = dgSo2hSheetSongBackdrop;
 
@@ -36,5 +39,20 @@ static const ALIGN_ASSET(2) char gSo2hSheetMiniButtonTex[] = dgSo2hSheetMiniButt
 
 #define dgSo2hSheetItems "__OTR__textures/so2h_menu/gSo2hSheetItems"
 static const ALIGN_ASSET(2) char gSo2hSheetItemsTex[] = dgSo2hSheetItems;
+
+#define dgSo2hSheetSlab9 "__OTR__textures/so2h_menu/gSo2hSheetSlab9"
+static const ALIGN_ASSET(2) char gSo2hSheetSlab9Tex[] = dgSo2hSheetSlab9;
+
+#define dgSo2hSheetSlotEmpty "__OTR__textures/so2h_menu/gSo2hSheetSlotEmpty"
+static const ALIGN_ASSET(2) char gSo2hSheetSlotEmptyTex[] = dgSo2hSheetSlotEmpty;
+
+#define dgSo2hSheetSlotItem "__OTR__textures/so2h_menu/gSo2hSheetSlotItem"
+static const ALIGN_ASSET(2) char gSo2hSheetSlotItemTex[] = dgSo2hSheetSlotItem;
+
+#define dgSo2hSheetSlotThin "__OTR__textures/so2h_menu/gSo2hSheetSlotThin"
+static const ALIGN_ASSET(2) char gSo2hSheetSlotThinTex[] = dgSo2hSheetSlotThin;
+
+#define dgSo2hSheetItemBox "__OTR__textures/so2h_menu/gSo2hSheetItemBox"
+static const ALIGN_ASSET(2) char gSo2hSheetItemBoxTex[] = dgSo2hSheetItemBox;
 
 #endif

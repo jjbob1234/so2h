@@ -53,6 +53,33 @@ static f32 So2h_UiPulse(f32 t) {
     return 4.0f * t * (1.0f - t);
 }
 
+/**
+ * Length of the travel vector. A slide is always axis-aligned (one component is 0), so this is
+ * an absolute value in practice - written as a length so the POP overshoot stays correct if a
+ * diagonal entrance is ever declared. Never 0: the caller divides by it.
+ */
+static f32 So2h_UiLen2(f32 x, f32 y) {
+    f32 ax = (x < 0.0f) ? -x : x;
+    f32 ay = (y < 0.0f) ? -y : y;
+    f32 lo;
+    f32 hi;
+    f32 r;
+
+    if (ax < ay) {
+        lo = ax;
+        hi = ay;
+    } else {
+        lo = ay;
+        hi = ax;
+    }
+    if (hi <= 0.0f) {
+        return 1.0f;
+    }
+    // Alpha-max-plus-beta-min: exact for an axis-aligned vector, and within 4% otherwise.
+    r = hi + (0.428f * lo);
+    return r;
+}
+
 static f32 So2h_UiClampF(f32 v, f32 lo, f32 hi) {
     if (v < lo) {
         return lo;
@@ -402,6 +429,15 @@ void So2h_Ui_GetCellRect(So2hUiId parent, s16 index, So2hUiRect* out) {
 // ---------------------------------------------------------------------------------------
 // The walk
 // ---------------------------------------------------------------------------------------
+/**
+ * True for the draw modes that put a FRAME on screen - the ones that own a border and
+ * therefore have a content rect distinct from their outer rect. A stretched or native single
+ * slice is just a picture: it has no chrome, so it insets nothing.
+ */
+static s32 So2h_UiIsFrameMode(u8 mode) {
+    return (mode == SO2H_UI_DRAW_NINESLICE) || (mode == SO2H_UI_DRAW_RUN) || (mode == SO2H_UI_DRAW_TILE);
+}
+
 static void So2h_UiSolveCanon(So2hUiCtx* ctx, s32 canon) {
     f32 designW = (canon == SO2H_UI_CANON_WIDE) ? SO2H_UI_DESIGN_W_WIDE : SO2H_UI_DESIGN_W_43;
     f32 sx = ctx->screenW / designW;
@@ -433,11 +469,39 @@ static void So2h_UiSolveCanon(So2hUiCtx* ctx, s32 canon) {
 
         {
             const So2hUiRect* pr = &ctx->node[d->parent].canonRect[canon];
+            f32 bl = 0.0f;
+            f32 bt = 0.0f;
+            f32 br = 0.0f;
+            f32 bb = 0.0f;
 
-            px = pr->x0;
-            py = pr->y0;
-            pw = pr->x1 - pr->x0;
-            ph = pr->y1 - pr->y0;
+            // Solve against the ring of the parent this node attaches to - by default the
+            // CONTENT rect, inside both the outer frame line and the inner lip. A framed
+            // parent owns its chrome, and a child that ignores it lands underneath. Ring
+            // widths come from the sheet in source texels, scaled by the same tilePx/unit
+            // the frame art uses, so the inset can never drift from the art.
+            {
+                const So2hUiDesc* pd = &ctx->desc[d->parent];
+
+                if (So2h_UiIsFrameMode(pd->style.drawMode)) {
+                    So2h_UiSheet_RingPx(pd->style.sheet, d->attach, ctx->tile, &bl, &bt, &br, &bb);
+                }
+            }
+
+            px = pr->x0 + bl;
+            py = pr->y0 + bt;
+            pw = (pr->x1 - pr->x0) - bl - br;
+            ph = (pr->y1 - pr->y0) - bt - bb;
+
+            // A panel narrower than its own chrome is a layout bug upstream, but it must not
+            // produce an inverted rect here - clamp to an empty content box at the centre.
+            if (pw < 0.0f) {
+                px += pw * 0.5f;
+                pw = 0.0f;
+            }
+            if (ph < 0.0f) {
+                py += ph * 0.5f;
+                ph = 0.0f;
+            }
         }
 
         // Constraints are authored in design units, so convert the parent to design space,
@@ -541,8 +605,113 @@ static void So2h_UiResolveClips(So2hUiCtx* ctx) {
 }
 
 /**
- * Reveal is one shared 0..1 per node on the same curve as everything else, so FADE, SLIDE and
- * UNROLL are three readings of one number rather than three animation systems.
+ * Displaces a node and everything under it. The descriptor table is authored parents-first, so
+ * a subtree is a contiguous forward run and "move this window and its contents" is one pass
+ * with no recursion and no child lists.
+ */
+static void So2h_UiOffsetSubtree(So2hUiCtx* ctx, s32 root, f32 dx, f32 dy) {
+    s32 j;
+
+    for (j = root; j < ctx->descCount; j++) {
+        So2hUiNode* n;
+
+        if ((j != root) && !ctx->node[j].inSubtree) {
+            continue;
+        }
+        n = &ctx->node[j];
+        n->rect.x0 += dx;
+        n->rect.x1 += dx;
+        n->rect.y0 += dy;
+        n->rect.y1 += dy;
+        n->clipRect.x0 += dx;
+        n->clipRect.x1 += dx;
+        n->clipRect.y0 += dy;
+        n->clipRect.y1 += dy;
+    }
+}
+
+/**
+ * Marks node `root` and every descendant of it in ctx->node[].inSubtree. Parents-first
+ * authoring is what makes the single forward pass correct.
+ */
+static void So2h_UiMarkSubtree(So2hUiCtx* ctx, s32 root) {
+    s32 j;
+
+    for (j = 0; j < ctx->descCount; j++) {
+        ctx->node[j].inSubtree = 0;
+    }
+    ctx->node[root].inSubtree = 1;
+    for (j = root + 1; j < ctx->descCount; j++) {
+        So2hUiId parent = ctx->desc[j].parent;
+
+        if ((parent != SO2H_UI_INVALID) && (parent < ctx->descCount) && ctx->node[parent].inSubtree) {
+            ctx->node[j].inSubtree = 1;
+        }
+    }
+}
+
+static void So2h_UiMoveSubtree(So2hUiCtx* ctx, s32 root, f32 dx, f32 dy) {
+    if ((dx == 0.0f) && (dy == 0.0f)) {
+        return;
+    }
+    So2h_UiMarkSubtree(ctx, root);
+    So2h_UiOffsetSubtree(ctx, root, dx, dy);
+}
+
+/**
+ * Scales a node and its descendants about a pivot in screen units. GROW and the exit squash
+ * are the same operation with different pivots, which is why neither needs its own code in
+ * any window that uses them.
+ */
+static void So2h_UiStretchSubtree(So2hUiCtx* ctx, s32 root, f32 sx, f32 sy, f32 px, f32 py) {
+    s32 j;
+
+    So2h_UiMarkSubtree(ctx, root);
+    for (j = root; j < ctx->descCount; j++) {
+        So2hUiNode* n = &ctx->node[j];
+        So2hUiRect* r;
+        s32 k;
+
+        if ((j != root) && !n->inSubtree) {
+            continue;
+        }
+        for (k = 0; k < 2; k++) {
+            r = (k == 0) ? &n->rect : &n->clipRect;
+            r->x0 = px + ((r->x0 - px) * sx);
+            r->x1 = px + ((r->x1 - px) * sx);
+            r->y0 = py + ((r->y0 - py) * sy);
+            r->y1 = py + ((r->y1 - py) * sy);
+        }
+    }
+}
+
+/**
+ * This node's total wait before it starts moving: the table delay plus this open's slop.
+ *
+ * The table sets the CHOREOGRAPHY - which window is early, which is late - and the jitter
+ * makes sure no two opens are ever bar-for-bar identical. Both are read here and nowhere
+ * else, so a window joins the sequence by naming one number.
+ */
+static s32 So2h_UiRevealDelay(So2hUiCtx* ctx, s32 i) {
+    const So2hUiStyle* st = &ctx->desc[i].style;
+
+    if (st->revealJitter == 0) {
+        return st->revealDelay;
+    }
+    return st->revealDelay + (s32)(So2h_UiHash((u32)i ^ ctx->openSeed) % (u32)(st->revealJitter + 1));
+}
+
+/** Same idea on the way out, but tighter: a beat of slop, not a second stagger. */
+static s32 So2h_UiCloseDelay(So2hUiCtx* ctx, s32 i) {
+    if (SO2H_UI_CLOSE_JITTER <= 0) {
+        return 0;
+    }
+    return (s32)(So2h_UiHash(((u32)i * 7919u) ^ (ctx->openSeed + 0x9E3779B9u)) % (u32)(SO2H_UI_CLOSE_JITTER + 1));
+}
+
+/**
+ * Reveal is one shared 0..1 per node on the same curve as everything else, so FADE, SLIDE,
+ * FALL, POP, GROW and UNROLL are six readings of one number rather than six animation systems.
  */
 static void So2h_UiAdvanceReveals(So2hUiCtx* ctx) {
     s32 i;
@@ -560,9 +729,23 @@ static void So2h_UiAdvanceReveals(So2hUiCtx* ctx) {
         if (d->style.reveal == SO2H_UI_REVEAL_NONE) {
             n->revealT = 1.0f;
         } else if (n->revealT < 1.0f) {
-            n->revealT += 1.0f / (f32)SO2H_UI_MORPH_FRAMES;
-            if (n->revealT > 1.0f) {
-                n->revealT = 1.0f;
+            // The stagger is spent BEFORE the node starts moving, so every window shares one
+            // clock and the whole sequence is a column of delay numbers in the table.
+            if (n->revealHold < So2h_UiRevealDelay(ctx, i)) {
+                n->revealHold++;
+            } else {
+                // The two frames worth sounding are the two you can see: the frame this node
+                // stops waiting and starts moving, and the frame it settles. One voice each,
+                // per node, deliberately stacking - see so2h_ui_sfx.c.
+                if (n->revealT == 0.0f) {
+                    So2h_UiSfx_Slide(i, ctx->openSeed);
+                }
+                n->revealT += 1.0f / (f32)SO2H_UI_REVEAL_FRAMES;
+                if (n->revealT >= 1.0f) {
+                    n->revealT = 1.0f;
+                    So2h_UiSfx_SlideStop(i);
+                    So2h_UiSfx_Placed(i, ctx->openSeed);
+                }
             }
         }
 
@@ -574,6 +757,324 @@ static void So2h_UiAdvanceReveals(So2hUiCtx* ctx) {
             n->alpha *= 0.45f;
         }
     }
+}
+
+/**
+ * The screen edge a travelling node enters through, and how far off it has to start.
+ *
+ * AUTO is DERIVED from the solved rect: whichever screen edge the node's own centre is nearest.
+ * Distance is measured from the rect, so a node travels exactly far enough to be fully hidden -
+ * no baked travel distance anywhere, and it holds at every aspect.
+ */
+static void So2h_UiSlideEdge(So2hUiCtx* ctx, s32 i, f32* dx, f32* dy) {
+    const So2hUiDesc* d = &ctx->desc[i];
+    const So2hUiRect* r = &ctx->node[i].rect;
+    u8 e = d->style.revealFrom;
+
+    *dx = 0.0f;
+    *dy = 0.0f;
+
+    if (d->style.reveal == SO2H_UI_REVEAL_FALL) {
+        e = SO2H_UI_FROM_TOP; // a thing that falls comes from above. Never derived.
+    }
+    if (e == SO2H_UI_FROM_AUTO) {
+        f32 cx = (r->x0 + r->x1) * 0.5f;
+        f32 cy = (r->y0 + r->y1) * 0.5f;
+        f32 dl = cx - ctx->screenX0;
+        f32 dr = ctx->screenX1 - cx;
+        f32 dt = cy;
+        f32 db = SO2H_UI_DESIGN_H - cy;
+        f32 m = dl;
+
+        e = SO2H_UI_FROM_LEFT;
+        if (dr < m) {
+            m = dr;
+            e = SO2H_UI_FROM_RIGHT;
+        }
+        if (dt < m) {
+            m = dt;
+            e = SO2H_UI_FROM_TOP;
+        }
+        if (db < m) {
+            e = SO2H_UI_FROM_BOTTOM;
+        }
+    }
+
+    switch (e) {
+        case SO2H_UI_FROM_LEFT:
+            *dx = -(r->x1 - ctx->screenX0);
+            break;
+        case SO2H_UI_FROM_RIGHT:
+            *dx = ctx->screenX1 - r->x0;
+            break;
+        case SO2H_UI_FROM_TOP:
+            *dy = -r->y1;
+            break;
+        case SO2H_UI_FROM_BOTTOM:
+        default:
+            *dy = SO2H_UI_DESIGN_H - r->y0;
+            break;
+    }
+}
+
+/**
+ * SLIDE, FALL and POP are one displacement read through three curves: SLIDE eases in and out,
+ * FALL accelerates and bounces once, POP finishes its travel early and spends the frames it has
+ * left sailing past the resting place before snapping back onto it.
+ */
+static void So2h_UiAdvanceSlides(So2hUiCtx* ctx) {
+    s32 i;
+
+    for (i = 0; i < ctx->descCount; i++) {
+        const So2hUiDesc* d = &ctx->desc[i];
+        So2hUiNode* n = &ctx->node[i];
+        u8 rv = d->style.reveal;
+        f32 dx;
+        f32 dy;
+        f32 t;
+        f32 k;
+        f32 over = 0.0f;
+
+        if ((rv != SO2H_UI_REVEAL_SLIDE) && (rv != SO2H_UI_REVEAL_FALL) && (rv != SO2H_UI_REVEAL_POP)) {
+            continue;
+        }
+        if (n->revealT >= 1.0f) {
+            continue;
+        }
+
+        So2h_UiSlideEdge(ctx, i, &dx, &dy);
+        t = n->revealT;
+
+        if (rv == SO2H_UI_REVEAL_FALL) {
+            k = 1.0f - So2h_Ui_FallEase(t);
+        } else if (rv == SO2H_UI_REVEAL_POP) {
+            f32 s = t / SO2H_UI_POP_SETTLE;
+
+            if (s > 1.0f) {
+                s = 1.0f;
+            }
+            k = 1.0f - So2h_Ui_SmoothStep(s);
+            if (t > SO2H_UI_POP_SETTLE) {
+                f32 u = (t - SO2H_UI_POP_SETTLE) / (1.0f - SO2H_UI_POP_SETTLE);
+
+                over = -SO2H_UI_POP_OVER * So2h_UiPulse(u * u);
+            }
+        } else {
+            k = 1.0f - So2h_Ui_SmoothStep(t);
+        }
+
+        if (over != 0.0f) {
+            // The overshoot runs along the SAME axis the node entered on, so it is derived from
+            // the travel vector and no node carries a direction of its own for it.
+            f32 len = So2h_UiLen2(dx, dy);
+
+            So2h_UiMoveSubtree(ctx, i, (dx * k) + (over * dx / len), (dy * k) + (over * dy / len));
+        } else {
+            So2h_UiMoveSubtree(ctx, i, dx * k, dy * k);
+        }
+    }
+}
+
+/**
+ * GROW: the node starts as a short letterbox pinned at its OWN TOP EDGE and opens downward to
+ * its solved height, scaling its whole subtree with it. A window animates its contents by
+ * existing - nothing inside it declares anything.
+ */
+static void So2h_UiAdvanceGrows(So2hUiCtx* ctx) {
+    s32 i;
+
+    for (i = 0; i < ctx->descCount; i++) {
+        So2hUiNode* n = &ctx->node[i];
+        f32 k;
+
+        if (ctx->desc[i].style.reveal != SO2H_UI_REVEAL_GROW) {
+            continue;
+        }
+        if (n->revealT >= 1.0f) {
+            continue;
+        }
+        k = SO2H_UI_GROW_FROM + ((1.0f - SO2H_UI_GROW_FROM) * So2h_Ui_SmoothStep(n->revealT));
+        So2h_UiStretchSubtree(ctx, i, 1.0f, k, n->rect.x0, n->rect.y0);
+    }
+}
+
+/**
+ * Drives REVEAL_SWAP nodes off the bottom of the screen and back.
+ *
+ * The displacement is DERIVED from the solved rect (how far this node's top is from the screen
+ * bottom), never from a baked distance - so a node that comes back twice as tall is still
+ * exactly hidden on the way out, and an aspect change needs no new numbers.
+ */
+static void So2h_UiAdvanceSwaps(So2hUiCtx* ctx) {
+    s32 i;
+
+    for (i = 0; i < ctx->descCount; i++) {
+        So2hUiNode* n = &ctx->node[i];
+
+        if (ctx->desc[i].style.reveal != SO2H_UI_REVEAL_SWAP) {
+            continue;
+        }
+        if (n->swapOut) {
+            n->swapT -= 1.0f / (f32)SO2H_UI_MORPH_FRAMES;
+            if (n->swapT <= 0.0f) {
+                n->swapT = 0.0f;
+                // Fully off-screen: the ONLY moment content is allowed to change.
+                if (n->swapPending && (ctx->swapApply[i] != NULL)) {
+                    ctx->swapApply[i](i, ctx->swapArg[i]);
+                }
+                n->swapPending = 0;
+                n->swapOut = 0;
+            }
+        } else if (n->swapT < 1.0f) {
+            // On the way IN a SWAP node is also part of the opening performance, so its rise
+            // waits out the same delay + jitter every other window does. The entrance and the
+            // content swap are the same move; there is no second mechanism.
+            if (n->revealHold >= So2h_UiRevealDelay(ctx, i)) {
+                n->swapT += 1.0f / (f32)SO2H_UI_MORPH_FRAMES;
+                if (n->swapT > 1.0f) {
+                    n->swapT = 1.0f;
+                }
+            }
+        }
+        if (n->swapT < 1.0f) {
+            So2h_UiMoveSubtree(ctx, i, 0.0f,
+                               (1.0f - So2h_Ui_SmoothStep(n->swapT)) * (SO2H_UI_DESIGN_H - n->rect.y0));
+        }
+    }
+}
+
+/**
+ * The exit is NOT the entrance played backwards: everything gathers UPWARD for a few frames of
+ * held breath, then the floor drops out and each node falls under gravity, stretching as it
+ * picks up speed. Per-node desync means the menu comes apart rather than leaving as one sheet.
+ */
+static void So2h_UiAdvanceClose(So2hUiCtx* ctx) {
+    s32 i;
+
+    if (!ctx->closing) {
+        return;
+    }
+    ctx->closeFrames++;
+
+    for (i = 0; i < ctx->descCount; i++) {
+        So2hUiNode* n = &ctx->node[i];
+        s32 f;
+
+        if (n->closeF < 0) {
+            continue;
+        }
+        n->closeF++;
+        f = n->closeF - So2h_UiCloseDelay(ctx, i);
+        if (f <= 0) {
+            continue;
+        }
+        if (f <= SO2H_UI_CLOSE_RISE_F) {
+            // Build-up: rise, eased OUT, so it reads as being pulled up short.
+            f32 u = So2h_Ui_SmoothStep((f32)f / (f32)SO2H_UI_CLOSE_RISE_F);
+
+            // Same two audible beats as the entrance, reused: the node picks itself up, then
+            // lets go. The "placed" thud lands on the release, which is the accent you feel.
+            if (f == 1) {
+                So2h_UiSfx_Slide(i, ctx->openSeed ^ 0x5BF03635u);
+            } else if (f == SO2H_UI_CLOSE_RISE_F) {
+                So2h_UiSfx_SlideStop(i);
+                So2h_UiSfx_Placed(i, ctx->openSeed ^ 0x5BF03635u);
+            }
+            So2h_UiMoveSubtree(ctx, i, 0.0f, -SO2H_UI_CLOSE_RISE_U * u);
+        } else {
+            f32 g = (f32)(f - SO2H_UI_CLOSE_RISE_F);
+            f32 dy = -SO2H_UI_CLOSE_RISE_U + (0.5f * SO2H_UI_CLOSE_GRAVITY * g * g);
+            f32 v = SO2H_UI_CLOSE_GRAVITY * g;
+            f32 sy = 1.0f + ((v * 0.03f < SO2H_UI_CLOSE_SQUASH) ? (v * 0.03f) : SO2H_UI_CLOSE_SQUASH);
+            f32 sx = 1.0f / (1.0f + (SO2H_UI_CLOSE_PINCH * (sy - 1.0f)));
+            f32 cx = (n->rect.x0 + n->rect.x1) * 0.5f;
+            f32 cy = (n->rect.y0 + n->rect.y1) * 0.5f;
+
+            So2h_UiStretchSubtree(ctx, i, sx, sy, cx, cy);
+            So2h_UiMoveSubtree(ctx, i, 0.0f, dy);
+        }
+    }
+}
+
+void So2h_Ui_Open(void) {
+    So2hUiCtx* ctx = So2h_UiCtx();
+    s32 i;
+
+    ctx->closing = 0;
+    ctx->closeFrames = 0;
+    ctx->openSeed = So2h_UiHash(ctx->openSeed + 0x2545F491u);
+    if (ctx->openSeed == 0) {
+        ctx->openSeed = 1;
+    }
+    for (i = 0; i < SO2H_UI_MAX_NODES; i++) {
+        So2hUiNode* n = &ctx->node[i];
+
+        n->revealT = 0.0f;
+        n->revealHold = 0;
+        n->closeF = -1;
+        // A SWAP node opens the way it comes back from a swap: up off the bottom.
+        n->swapT = 0.0f;
+        n->swapOut = 0;
+        n->swapPending = 0;
+    }
+}
+
+void So2h_Ui_Close(void) {
+    So2hUiCtx* ctx = So2h_UiCtx();
+    s32 i;
+
+    ctx->closing = 1;
+    ctx->closeFrames = 0;
+    for (i = 0; i < SO2H_UI_MAX_NODES; i++) {
+        ctx->node[i].closeF = 0;
+    }
+}
+
+s32 So2h_Ui_CloseDone(void) {
+    So2hUiCtx* ctx = So2h_UiCtx();
+    s32 i;
+
+    if (!ctx->closing) {
+        return 0;
+    }
+    for (i = 0; i < ctx->descCount; i++) {
+        So2hUiNode* n = &ctx->node[i];
+        f32 g;
+
+        if (!n->visible) {
+            continue;
+        }
+        g = (f32)(n->closeF - So2h_UiCloseDelay(ctx, i) - SO2H_UI_CLOSE_RISE_F);
+        if (g < 0.0f) {
+            return 0;
+        }
+        if ((0.5f * SO2H_UI_CLOSE_GRAVITY * g * g) < (SO2H_UI_DESIGN_H + 40.0f)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+s32 So2h_Ui_Swap(s32 nodeId, So2hUiSwapFn apply, void* arg) {
+    So2hUiCtx* ctx = So2h_UiCtx();
+    So2hUiNode* n;
+
+    if (!So2h_UiNode_IsValid((So2hUiId)nodeId)) {
+        return 0;
+    }
+    if (ctx->desc[nodeId].style.reveal != SO2H_UI_REVEAL_SWAP) {
+        // Not a swap node: the content change is not animatable, so just do it.
+        if (apply != NULL) {
+            apply(nodeId, arg);
+        }
+        return 0;
+    }
+    n = &ctx->node[nodeId];
+    ctx->swapApply[nodeId] = apply;
+    ctx->swapArg[nodeId] = arg;
+    n->swapPending = 1;
+    n->swapOut = 1;
+    return 1;
 }
 
 void So2h_UiLayout_Update(void) {
@@ -668,5 +1169,11 @@ void So2h_UiLayout_Update(void) {
         }
     }
 
+    // Cheap no-op once the two custom samples are in the SYSTEM bank; retries until audio is up.
+    So2h_UiSfx_Bind();
     So2h_UiAdvanceReveals(ctx);
+    So2h_UiAdvanceSlides(ctx);
+    So2h_UiAdvanceGrows(ctx);
+    So2h_UiAdvanceSwaps(ctx);
+    So2h_UiAdvanceClose(ctx);
 }

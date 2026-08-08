@@ -113,6 +113,7 @@ def check_run_band(name, img, cols, rows, unit, run, hollow):
     col_lo, col_hi = run.get("cols", (0, -1))
     row_lo, row_hi = run.get("rows", (0, -1))
 
+
     if col_hi >= col_lo:
         if col_lo < 0 or col_hi >= cols:
             fail(name, "run cols [{},{}] outside grid width {}".format(col_lo, col_hi, cols))
@@ -189,6 +190,60 @@ def load_sheet(entry, is_legacy):
     col_lo, col_hi = run.get("cols", (0, -1))
     row_lo, row_hi = run.get("rows", (0, -1))
 
+    # The three concentric rings, in SOURCE TEXELS per edge. Declared, never inferred: on the
+    # decorated frames the chrome thickness is genuinely not the run band, and guessing it from
+    # pixels is how a child ends up half under a bevel.
+    is_frame = (col_hi >= col_lo or row_hi >= row_lo)
+
+    # Rings are declared in WHOLE TILES, never in scanned pixels. The art is built that way:
+    # a 5x5 @64 frame is an outer border ring (tile ring 0), an inner border ring (tile ring 1)
+    # and a centre cell that tiles the fill. So "rings": [1, 2] means border = 1 tile in,
+    # content = 2 tiles in. A scalar n is shorthand for [n, n] (a single-ring sheet).
+    def ring_tiles(key, default):
+        v = entry.get(key, default)
+        if isinstance(v, (int, float)):
+            v = [int(v), int(v)]
+        if (not isinstance(v, (list, tuple))) or len(v) != 2:
+            fail(name, "{} must be a number or [borderTiles, contentTiles] in WHOLE TILES".format(key))
+            return [0, 0]
+        out = []
+        for x, which in zip(v, ("border", "content")):
+            if isinstance(x, float) and x != int(x):
+                fail(name, "{} {} ring is {} - rings are whole tiles, not fractions "
+                           "(measure the grid, do not scan the pixels)".format(key, which, x))
+            x = int(x)
+            if x < 0:
+                fail(name, "{} {} ring is negative".format(key, which))
+            out.append(x)
+        if out[1] < out[0]:
+            fail(name, "content ring ({} tiles) is inside the border ring ({} tiles) - rings must "
+                       "nest outward-in".format(out[1], out[0]))
+        return out
+
+    rings = ring_tiles("rings", [1, 2] if is_frame else 0)
+
+    # A frame whose content ring is n tiles deep needs 2n + 1 tiles per growing axis: n fixed
+    # tiles either side plus at least one fill cell. Fewer than that and the rings would eat
+    # each other, so the sheet is simply mis-declared.
+    need = 2 * rings[1] + 1
+    if rings[1] > 0:
+        if col_hi >= col_lo and cols < need:
+            fail(name, "{} tile columns but a {}-tile content ring needs at least {} "
+                       "(n fixed each side + 1 fill)".format(cols, rings[1], need))
+        if row_hi >= row_lo and rows < need:
+            fail(name, "{} tile rows but a {}-tile content ring needs at least {} "
+                       "(n fixed each side + 1 fill)".format(rows, rings[1], need))
+        if rings[1] * 2 * unit >= w or rings[1] * 2 * unit >= h:
+            fail(name, "content ring ({} tiles = {}px each side) does not fit in {}x{}"
+                       .format(rings[1], rings[1] * unit, w, h))
+
+    border = [rings[0] * unit] * 4
+    content = [rings[1] * unit] * 4
+
+    grow = entry.get("grow", "run")
+    if grow not in ("run", "stretch"):
+        fail(name, "grow must be 'run' or 'stretch', got {!r}".format(grow))
+
     return {
         "name": name,
         "width": w,
@@ -200,6 +255,10 @@ def load_sheet(entry, is_legacy):
         "runColHi": col_hi,
         "runRowLo": row_lo,
         "runRowHi": row_hi,
+        "rings": rings,
+        "border": border,
+        "content": content,
+        "grow": grow,
         "note": entry.get("note", ""),
         "slices": slices,
         "legacy": is_legacy,
@@ -266,11 +325,19 @@ def emit_table_c(sheets):
         if s["note"]:
             out.append("    // {}".format(s["note"]))
         out.append("    [{sid}] = {{ {sid}, {n}Tex, {w}, {h}, {u}, {c}, {r}, SO2H_UI_FMT_RGBA32, "
-                   "{cl}, {ch}, {rl}, {rh}, 0, \"{n}\" }},"
+                   "{cl}, {ch}, {rl}, {rh}, 0, "
+                   "{bl}, {bt}, {br}, {bb}, {kl}, {kt}, {kr}, {kb}, {gw}, "
+                   "\"{n}\" }},"
                    .format(sid=sid, n=s["name"], w=s["width"], h=s["height"], u=s["unit"],
                            c=s["cols"], r=s["rows"],
                            cl=s["runColLo"] & 0xFF, ch=s["runColHi"] & 0xFF,
-                           rl=s["runRowLo"] & 0xFF, rh=s["runRowHi"] & 0xFF))
+                           rl=s["runRowLo"] & 0xFF, rh=s["runRowHi"] & 0xFF,
+                           bl=s["border"][0], bt=s["border"][1],
+                           br=s["border"][2], bb=s["border"][3],
+                           kl=s["content"][0], kt=s["content"][1],
+                           kr=s["content"][2], kb=s["content"][3],
+                           gw=("SO2H_UI_GROW_STRETCH" if s["grow"] == "stretch"
+                               else "SO2H_UI_GROW_RUN")))
     out.append("};")
     return "\n".join(out) + "\n"
 

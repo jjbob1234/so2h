@@ -1,119 +1,429 @@
 {
-  "$comment": [
-    "SO2H menu sheet manifest. Consumed by tools/so2h_gen_sheets.py, which emits",
-    "mm/assets/so2h_ui_sheets_assets.h (the __OTR__ path defines) and",
-    "mm/2s2h/Menu/so2h_ui_sheets.h (the So2hUiSheetDef table + slice ids).",
-    "",
-    "THE GRID IS NEVER INFERRED FROM PIXELS. Every sheet declares its unit and grid here and",
-    "the generator hard-fails if the declared grid does not divide the file exactly.",
-    "",
-    "'run' is the cell band that a growing panel repeats or stretches through. It is a single",
-    "middle cell for every frame sheet on purpose: a one-cell band is used identically on every",
-    "row and every column, so 'A B B C D' grows as 'A B [B..] C D' and the interior row",
-    "'E F F F G' grows as 'E F [F..] F G' with no cross-row drift. A wider band would alternate",
-    "two different tiles on the rows where the band is not uniform (the bottom row 'L M N N O'",
-    "would come out 'L M N M N N O'), which is exactly the seam artefact this field exists to",
-    "avoid. Omit 'run' entirely for an atlas - a sheet with no run band never grows, it only",
-    "hands out slices.",
-    "",
-    "NOTHING IS RETIRED. All 43 legacy so2h_menu tiles stay registered below as 1x1 sheets so",
-    "no existing draw call goes dark. New sheets only give descriptor rows something better to",
-    "point at, one reversible line at a time."
-  ],
-
+  "$comment": "Rings are declared in WHOLE TILES, never scanned from pixels. The 64px frame art is built as an outer border ring (tile ring 0), an inner border ring (tile ring 1), and a single centre cell that tiles the fill - so \"rings\": [1,2] means border = 1 tile in, content = 2 tiles in. A frame with a 2-tile content ring needs at least 5 tiles on any growing axis (2 fixed each side + 1 fill). \"grow\": \"run\" repeats the run band at native size; \"stretch\" scales the middle cell - these interiors are self-tiling so run is the default and stretching smears them. Run bands are a single middle cell on both axes. Never infer a grid from pixels; the generator re-hashes every cell and fails the build on violations.",
   "otrFolder": "textures/so2h_menu",
   "defaultFormat": "rgba32",
-
   "sheets": [
     {
       "name": "gSo2hSheetFrameFilled",
       "file": "gSo2hSheetFrameFilled.rgba32.png",
       "unit": 64,
-      "grid": [5, 5],
-      "run": { "cols": [2, 2], "rows": [2, 2] },
-      "note": "Contentless-filled. The only textbook nine-slice of the five: tile map A B B C D / E F F F G / H F F F I / J F F F K / L M N N O, single self-tiling opaque interior F. Primary body panel."
+      "grid": [
+        5,
+        5
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ],
+        "rows": [
+          2,
+          2
+        ]
+      },
+      "grow": "run",
+      "note": "Contentless-filled. The only textbook nine-slice of the five: tile map A B B C D / E F F F G / H F F F I / J F F F K / L M N N O, single self-tiling opaque interior F. Primary body panel.",
+      "rings": [
+        1,
+        2
+      ]
     },
     {
       "name": "gSo2hSheetFrameEmpty",
       "file": "gSo2hSheetFrameEmpty.rgba32.png",
       "unit": 64,
-      "grid": [5, 5],
-      "run": { "cols": [2, 2], "rows": [2, 2] },
+      "grid": [
+        5,
+        5
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ],
+        "rows": [
+          2,
+          2
+        ]
+      },
+      "grow": "run",
       "hollowInterior": true,
-      "note": "Empty_Frame. Its centre cell is fully transparent ON PURPOSE - this is the frame you put over live content - so hollowInterior waives the generator's transparent-run-cell check. Hand-packed with cross-row reuse (A B B C D / E F G H I / J K L J K / M N B O P / Q R G G S). Interior is decorated, not flat, so it grows well horizontally and is best kept near native height."
+      "note": "Empty_Frame. Its centre cell is fully transparent ON PURPOSE - this is the frame you put over live content - so hollowInterior waives the generator's transparent-run-cell check. Hand-packed with cross-row reuse (A B B C D / E F G H I / J K L J K / M N B O P / Q R G G S). Interior is decorated, not flat, so it grows well horizontally and is best kept near native height.",
+      "rings": [
+        1,
+        2
+      ]
     },
     {
       "name": "gSo2hSheetFrameRaising",
       "file": "gSo2hSheetFrameRaising.rgba32.png",
       "unit": 64,
-      "grid": [5, 5],
-      "run": { "cols": [2, 2], "rows": [2, 2] },
-      "note": "Raising_Window. 23 of 25 cells unique; top row A B B C D."
+      "grid": [
+        5,
+        5
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ],
+        "rows": [
+          2,
+          2
+        ]
+      },
+      "grow": "run",
+      "note": "Raising_Window. 23 of 25 cells unique; top row A B B C D.",
+      "rings": [
+        1,
+        2
+      ]
     },
     {
       "name": "gSo2hSheetFrameBacked",
       "file": "gSo2hSheetFrameBacked.rgba32.png",
       "unit": 64,
-      "grid": [5, 5],
-      "run": { "cols": [2, 2], "rows": [2, 2] },
-      "note": "Backed_Frame. Same tile-identity map as Raising."
+      "grid": [
+        5,
+        5
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ],
+        "rows": [
+          2,
+          2
+        ]
+      },
+      "grow": "run",
+      "note": "Backed_Frame. Same tile-identity map as Raising.",
+      "rings": [
+        1,
+        2
+      ]
     },
     {
       "name": "gSo2hSheetFramePopup",
       "file": "gSo2hSheetFramePopup.rgba32.png",
       "unit": 64,
-      "grid": [5, 5],
-      "run": { "cols": [2, 2], "rows": [2, 2] },
-      "note": "Replacement-technicalUI_Popup. Genuinely a different frame, not a shifted copy: A B C C D / E F G H I / J K L M N / O P Q R S / T U U V W."
+      "grid": [
+        5,
+        5
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ],
+        "rows": [
+          2,
+          2
+        ]
+      },
+      "grow": "run",
+      "note": "Replacement-technicalUI_Popup. Genuinely a different frame, not a shifted copy: A B C C D / E F G H I / J K L M N / O P Q R S / T U U V W.",
+      "rings": [
+        1,
+        2
+      ]
     },
-
+    {
+      "name": "gSo2hSheetFrameGlass",
+      "file": "gSo2hSheetFrameGlass.rgba32.png",
+      "unit": 64,
+      "grid": [
+        5,
+        5
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ],
+        "rows": [
+          2,
+          2
+        ]
+      },
+      "grow": "run",
+      "note": "Base-Semi-Transparent_Window. Interior is a flat alpha-176 wash, so this is the default backing for ANY window drawn OVER live content - overlays, popups, page panels. Same tile-identity map as Raising/Backed (A B B C D / E F G H I / J K L M N / O P Q R S / T U V V W), 23 of 25 unique, single middle run cell on both axes.",
+      "rings": [
+        1,
+        2
+      ]
+    },
     {
       "name": "gSo2hSheetSongBackdrop",
       "file": "gSo2hSheetSongBackdrop.rgba32.png",
       "unit": 32,
-      "grid": [8, 4],
-      "run": { "cols": [2, 2] },
-      "note": "Horizontal extendable strip. Rows 0 and 3 are fully transparent padding; rows 1-2 are cap + repeating middle + cap (B C C C C C C D / E F G G G G G H). No vertical run band - it was not drawn to grow downward."
+      "grid": [
+        8,
+        4
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ]
+      },
+      "note": "Horizontal extendable strip. Rows 0 and 3 are fully transparent padding; rows 1-2 are cap + repeating middle + cap (B C C C C C C D / E F G G G G G H). No vertical run band - it was not drawn to grow downward.",
+      "rings": [
+        1,
+        1
+      ]
     },
-
     {
       "name": "gSo2hSheetCornerFix",
       "file": "gSo2hSheetCornerFix.rgba32.png",
       "unit": 64,
-      "grid": [3, 3],
-      "note": "Atlas, 9 unique corner patches for where two panels meet. No repeated tiles."
+      "grid": [
+        3,
+        3
+      ],
+      "note": "Atlas, 9 unique corner patches for where two panels meet. No repeated tiles.",
+      "rings": [
+        1,
+        1
+      ]
     },
     {
       "name": "gSo2hSheetBigButton",
       "file": "gSo2hSheetBigButton.rgba32.png",
       "unit": 64,
-      "grid": [2, 2],
-      "note": "Atlas, 4 button container states. No repeated tiles."
+      "grid": [
+        2,
+        2
+      ],
+      "note": "Atlas of 4 INDIVIDUAL button sprites - NOT a frame. Never nine-slice or tile this sheet; draw one slice at native size. Top row is the round pill (normal / red), bottom row is the square container (raised / sunken).",
+      "slices": {
+        "PILL": [
+          0,
+          0
+        ],
+        "PILL_RED": [
+          1,
+          0
+        ],
+        "SQUARE": [
+          0,
+          1
+        ],
+        "SQUARE_SUNKEN": [
+          1,
+          1
+        ]
+      }
     },
     {
       "name": "gSo2hSheetContentBox",
       "file": "gSo2hSheetContentBox.rgba32.png",
       "unit": 32,
-      "grid": [4, 4],
+      "grid": [
+        4,
+        4
+      ],
       "note": "Atlas, 16 content-container pieces. No repeated tiles."
     },
     {
       "name": "gSo2hSheetMiniButton",
       "file": "gSo2hSheetMiniButton.rgba32.png",
       "unit": 32,
-      "grid": [4, 4],
-      "note": "Atlas, 16 mini-button and textbox pieces. No repeated tiles."
+      "grid": [
+        4,
+        4
+      ],
+      "note": "Atlas, 16 mini-button and textbox pieces. No repeated tiles.",
+      "slices": {
+        "ARROW_LEFT": [
+          0,
+          2
+        ],
+        "ARROW_UP": [
+          1,
+          2
+        ],
+        "ARROW_DOWN": [
+          2,
+          2
+        ],
+        "ARROW_RIGHT": [
+          3,
+          2
+        ],
+        "NOTE": [
+          0,
+          0
+        ],
+        "NOTE_ACTIVE": [
+          1,
+          0
+        ],
+        "NOTE_LOCKED": [
+          0,
+          1
+        ],
+        "NOTE_DENIED": [
+          1,
+          1
+        ],
+        "MARK_X": [
+          2,
+          1
+        ],
+        "MARK_O": [
+          3,
+          1
+        ],
+        "BLANK": [
+          3,
+          0
+        ],
+        "HATCH": [
+          0,
+          3
+        ]
+      }
     },
-
     {
       "name": "gSo2hSheetItems",
       "file": "gSo2hSheetItems.rgba32.png",
       "unit": 32,
-      "grid": [14, 15],
+      "grid": [
+        14,
+        15
+      ],
       "note": "The item and button icon atlas, 448x480, 167/210 cells unique. Addressed by So2h_Ui_Slice(sheet, col, row). No named slices yet: the sheet carries only 4 of the 6 medallions and no spiritual stones, and the decision was to source ALL medallions from the OoT rips behind a one-line art-source table rather than mix two art origins on one row."
+    },
+    {
+      "name": "gSo2hSheetSlab9",
+      "file": "gSo2hSheetSlab9.rgba32.png",
+      "unit": 64,
+      "grid": [
+        3,
+        3
+      ],
+      "run": {
+        "cols": [
+          1,
+          1
+        ],
+        "rows": [
+          1,
+          1
+        ]
+      },
+      "grow": "run",
+      "note": "Contentless-filled 9-slice, 3x3 @64, all 9 cells unique, opaque self-tiling centre. The true textbook nine-slice of the set - one border ring, one repeating middle. Use where a small opaque slab is wanted without FrameFilled's two-ring bulk.",
+      "rings": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "gSo2hSheetSlotEmpty",
+      "file": "gSo2hSheetSlotEmpty.rgba32.png",
+      "unit": 64,
+      "grid": [
+        3,
+        3
+      ],
+      "run": {
+        "cols": [
+          1,
+          1
+        ],
+        "rows": [
+          1,
+          1
+        ]
+      },
+      "grow": "run",
+      "hollowInterior": true,
+      "note": "FullBorder-EmptyContent, 3x3 @64. Deep bevelled border with a FULLY TRANSPARENT centre - the frame you put over live content or a sprite. hollowInterior waives the transparent-run-cell check.",
+      "rings": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "gSo2hSheetSlotItem",
+      "file": "gSo2hSheetSlotItem.rgba32.png",
+      "unit": 64,
+      "grid": [
+        3,
+        3
+      ],
+      "run": {
+        "cols": [
+          1,
+          1
+        ],
+        "rows": [
+          1,
+          1
+        ]
+      },
+      "grow": "run",
+      "note": "FullBorder-ItemContainer, 3x3 @64. Same bevelled border as SlotEmpty but with an INSET dark recessed interior. This is the item-slot look: the quest/equip grid squares are this, not BigButton. BigButton SQUARE is the OUTSET/raised variant, used for the one slot that is meant to pop (the Bombers' Notebook).",
+      "rings": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "gSo2hSheetSlotThin",
+      "file": "gSo2hSheetSlotThin.rgba32.png",
+      "unit": 64,
+      "grid": [
+        3,
+        3
+      ],
+      "run": {
+        "cols": [
+          1,
+          1
+        ],
+        "rows": [
+          1,
+          1
+        ]
+      },
+      "grow": "run",
+      "hollowInterior": true,
+      "note": "FullThin-Border container, 3x3 @64. Narrow bevel, transparent centre. For readouts and counters where a full border would eat the content area.",
+      "rings": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "gSo2hSheetItemBox",
+      "file": "gSo2hSheetItemBox.rgba32.png",
+      "unit": 64,
+      "grid": [
+        5,
+        5
+      ],
+      "run": {
+        "cols": [
+          2,
+          2
+        ],
+        "rows": [
+          2,
+          2
+        ]
+      },
+      "grow": "run",
+      "note": "FullBorder-ItemContainer at 5x5 @64 - the grow-friendly version of SlotItem. Interior is a single repeated tile G across the whole 3x3 middle (A B C D E / F G G G H / I G G G H / J G G G H / K L M N O), so it tiles cleanly to any size. Use for a recessed panel that has to grow; use SlotItem for a single native-ish slot.",
+      "rings": [
+        1,
+        2
+      ]
     }
   ],
-
   "legacyTiles": {
     "$comment": "The 43 pieces cut by tools/so2h_slice_menu_sheet.py. Each is its own 1x1 sheet at its own native size; unit is taken from the file. KEEP - additive, never replaced.",
     "unitFromFile": true,

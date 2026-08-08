@@ -128,3 +128,41 @@ s32 So2h_UiSheet_SliceRectF(u16 sheet, u16 slice, f32* sx, f32* sy, f32* sw, f32
 
     return 1;
 }
+
+/**
+ * Inset of one of a sheet's rings, in DESIGN UNITS, at the given tile scale.
+ *
+ * Everything is declared in source texels and scaled by tilePx/32 here - which is exactly
+ * the scalar So2h_UiCellPx draws with ((unit / 32) * tile) - so chrome and content cannot
+ * drift apart. Dividing by the sheet's own unit instead would halve the rings on every
+ * 64-texel sheet while its tiles drew at full size.
+ * Returns 0 with zeroed outputs for an atlas, an unknown sheet, or ATTACH_EDGE.
+ */
+s32 So2h_UiSheet_RingPx(u16 sheet, u8 attach, f32 tilePx, f32* l, f32* t, f32* r, f32* b) {
+    const So2hUiSheetDef* s = So2h_UiSheet_Def(sheet);
+    f32 k;
+
+    *l = *t = *r = *b = 0.0f;
+    if ((s == NULL) || (s->unit <= 0) || (attach == SO2H_UI_ATTACH_EDGE)) {
+        return 0;
+    }
+
+    k = tilePx / 32.0f;
+
+    switch (attach) {
+        case SO2H_UI_ATTACH_BORDER:
+            *l = (f32)s->borderL * k;
+            *t = (f32)s->borderT * k;
+            *r = (f32)s->borderR * k;
+            *b = (f32)s->borderB * k;
+            break;
+        default:
+            *l = (f32)s->contentL * k;
+            *t = (f32)s->contentT * k;
+            *r = (f32)s->contentR * k;
+            *b = (f32)s->contentB * k;
+            break;
+    }
+
+    return 1;
+}
