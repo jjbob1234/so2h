@@ -598,6 +598,13 @@ void So2h_Ui_SetDrawMax(s32 max);
 
 void So2h_Ui_SetGfxBudget(Gfx* end);
 
+/**
+ * Words the caller must keep between the end it passes to So2h_Ui_SetGfxBudget and the real
+ * end of the arena, for the unguarded writers that come after the menu in the frame. See the
+ * constant's comment in so2h_ui_draw.c.
+ */
+s32 So2h_Ui_GfxTailReserve(void);
+
 // The tail currently armed, so a bound draw callback emitting raw gfx++ of its own can
 // apply the same guard instead of writing past the arena the engine is respecting.
 Gfx* So2h_Ui_GetGfxBudget(void);

@@ -266,12 +266,16 @@ void So2h_PauseMenu_Draw(struct PlayState* playArg) {
 
     gfx = OVERLAY_DISP;
 
-    // Arm the budget guard with the tail of the arena we are writing into. Every emitter in
-    // the engine refuses to write once fewer than SO2H_UI_GFX_RESERVE entries remain, so a
-    // heavy frame drops its tail instead of running off the end of overlayBuffer into the
-    // neighbouring pool buffers - which does not fault, it just makes Fast3D execute garbage
-    // and kills the process with no log line.
-    So2h_Ui_SetGfxBudget((Gfx*)play->state.gfxCtx->overlay.d);
+    // Arm the budget guard with the tail of the arena we are writing into, held back by the
+    // tail reserve. Every emitter in the engine refuses to write once fewer than
+    // SO2H_UI_GFX_RESERVE entries remain, so a heavy frame drops its tail instead of running
+    // off the end of overlayBuffer into the neighbouring pool buffers - which does not fault,
+    // it just makes Fast3D execute garbage and kills the process with no log line.
+    //
+    // The reserve on top of that is for everybody else: kaleido, the HUD and the debug text
+    // all write into this same arena after we return and none of them bounds-check. Starving
+    // them is what the pause hang actually was. See SO2H_FREEZE_ROOTCAUSE.md.
+    So2h_Ui_SetGfxBudget((Gfx*)play->state.gfxCtx->overlay.d - So2h_Ui_GfxTailReserve());
 
     gDPPipeSync(gfx++);
     // The pause pages render through a shrunken viewport, which leaves the scissor clipped to

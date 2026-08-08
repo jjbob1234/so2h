@@ -65,6 +65,17 @@
 // ---------------------------------------------------------------------------------------
 #define SO2H_UI_GFX_RESERVE 64
 
+// Words left untouched at the END of the overlay arena, on top of the per-emitter reserve.
+//
+// SO2H_UI_GFX_RESERVE only protects the emitter that is writing right now. It does nothing for
+// the code that writes into the same arena AFTER the menu returns - vanilla kaleido, the HUD,
+// the debug text - none of which bounds-check, because before this menu existed the overlay
+// arena was never close to full. Arming the budget short of the real end gives them a floor,
+// so a heavy page loses its own tail (visible, reportable) instead of pushing somebody else
+// off the end of overlayBuffer into the neighbouring pool, which does not fault: Fast3D just
+// executes garbage and the process wedges with no log line. See SO2H_FREEZE_ROOTCAUSE.md.
+#define SO2H_UI_GFX_TAIL_RESERVE 2048
+
 // Gfx words per emitted piece, used by the budget check. gDPLoadTextureTile expands to six
 // commands and gSPWideTextureRectangle to three; the rest is headroom for the sync.
 #define SO2H_UI_GFX_PER_QUAD 12
@@ -111,6 +122,10 @@ void So2h_Ui_SetGfxBudget(Gfx* end) {
 
 Gfx* So2h_Ui_GetGfxBudget(void) {
     return sGfxBudgetEnd;
+}
+
+s32 So2h_Ui_GfxTailReserve(void) {
+    return SO2H_UI_GFX_TAIL_RESERVE;
 }
 
 static s32 So2h_UiGfxRoom(Gfx* gfx, s32 need) {
@@ -672,11 +687,29 @@ Gfx* So2h_UiDraw_Slice(Gfx* gfx, u16 sheetId, u16 slice, const So2hUiRect* rect,
     gfx = So2h_UiSetupMode(gfx, sheet->fmt, r, g, b, a);
 
     switch (mode) {
-        // NINESLICE and RUN are the same operation; whether the middle repeats or stretches is
-        // a property of the ART, so it comes off the sheet rather than the call site. These
-        // interiors are self-tiling and stretching them smears the texture, so a descriptor row
-        // asking for NINESLICE on a run-grow sheet still gets whole native tiles.
+        // NINESLICE and RUN share one solver and differ in exactly one thing: what happens to
+        // the run band when the frame is bigger than its art.
+        //
+        //   NINESLICE stretches it - one quad for the band, whatever the span.
+        //   RUN repeats it at native pitch - one quad per whole tile plus a cropped remainder.
+        //
+        // This used to key off sheet->grow for both modes, which made every NINESLICE node in
+        // the scene tile natively, because every sheet in the pack is authored grow = run. The
+        // cost was not cosmetic: the 130x10 context rows emitted 117 quads each (a 64-texel
+        // tile at scale 0.2175 is a 3.38 px cell, repeated 37 times), the walls emitted 252,
+        // and the settled scene wanted ~39,000 Gfx words against a 16,384-word overlayBuffer.
+        // Our own emitters decline once the arena is nearly full, but the vanilla writers
+        // behind us in the frame do not check, so they ran off the end of the buffer and
+        // Fast3D executed garbage - the pause hang, with no log line and no stack. See
+        // SO2H_FREEZE_ROOTCAUSE.md.
+        //
+        // So the mode decides, and the sheet only gets a veto: a STRETCH-grow sheet is never
+        // tiled even when a descriptor asks for RUN, because stretching is what that art is
+        // drawn for. A panel that genuinely wants whole native tiles asks for RUN.
         case SO2H_UI_DRAW_NINESLICE:
+            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, false, false, scale);
+            break;
+
         case SO2H_UI_DRAW_RUN:
             gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, sheet->grow != SO2H_UI_GROW_STRETCH, false, scale);
             break;
