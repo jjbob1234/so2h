@@ -1,6 +1,7 @@
 #include "so2h_pause_menu.h"
 #include "so2h_ui.h"
 #include "so2h_ui_scene_pause.h"
+#include "so2h_ui_sheets.h"
 #include "so2h_pause_window.h"
 
 #include "global.h"
@@ -85,6 +86,12 @@ void So2h_PauseMenu_Update(s16 pauseState, s32 isOwlWarp) {
         const So2hUiDesc* table = So2h_UiScene_Pause(&nodeCount);
         const So2hUiVariant* variants = So2h_UiScene_PauseVariants(&variantCount);
 
+        // Sheets FIRST. The registry is what So2h_UiSheet_Def reads, and without it every
+        // lookup returns NULL: So2h_UiDrawQuad declines on sheet->texture == NULL and
+        // So2h_UiSheet_RingPx returns a zero ring, so the menu solves and navigates
+        // perfectly and paints absolutely nothing. That is exactly the failure mode this
+        // call prevents, so it stays in front of So2h_Ui_Init.
+        So2h_Ui_RegisterSheets(gSo2hUiSheets, SO2H_SHEET_MAX);
         So2h_Ui_Init(table, nodeCount, variants, variantCount);
         sSo2hMenuRegistered = 1;
 
