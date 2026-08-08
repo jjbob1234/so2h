@@ -890,7 +890,10 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
             So2h_UiApplyUnroll(d, n, &rect);
 
             if (trace) {
+                // Sheet and solved size as well as the index: a hang caused by a degenerate or
+                // enormous rect is obvious from the numbers, without another build.
                 So2h_UiTrace("node", i, (s32)d->style.sheet);
+                So2h_UiTrace("node.size", (s32)(rect.x1 - rect.x0), (s32)(rect.y1 - rect.y0));
             }
 
             if ((d->style.drawMode != SO2H_UI_DRAW_NONE) && (d->style.sheet != SO2H_UI_INVALID)) {

@@ -116,7 +116,16 @@ void So2h_PauseMenu_Update(s16 pauseState, s32 isOwlWarp) {
         // drawn frame of a pause, and a per-line-flushed log of every node is far too heavy to
         // leave running. Three frames is enough to catch the first full walk plus the one
         // before it, and it re-arms on every pause. Default 0 keeps it silent.
-        So2h_Ui_SetTraceFrames(CVarGetInteger("gSo2h.Ui.TraceFrames", 0));
+        s32 traceFrames = CVarGetInteger("gSo2h.Ui.TraceFrames", 0);
+
+        // Auto-arm. Draw Node Limit proves WHICH node by bisection but never says which node
+        // that is; the trace says the name but needed a second CVar to be set by hand, so the
+        // first bisected report came back with an empty log. If a limit is set, the trace is
+        // wanted - there is no reason to bisect and not want the answer.
+        if ((traceFrames <= 0) && (CVarGetInteger("gSo2h.Ui.DrawMax", -1) >= 0)) {
+            traceFrames = 3;
+        }
+        So2h_Ui_SetTraceFrames(traceFrames);
         So2h_UiTrace("menu.open", pauseState, 0);
         So2h_Ui_Open();
     } else if (!on && sSo2hMenuWasOn) {
