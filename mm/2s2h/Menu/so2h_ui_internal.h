@@ -86,6 +86,19 @@ typedef struct So2hUiCtx {
     So2hUiSwapFn swapApply[SO2H_UI_MAX_NODES];
     void* swapArg[SO2H_UI_MAX_NODES];
 
+    // Runtime content bindings, parallel to node[]. The descriptor table is GENERATED and
+    // static const, and the content that fills this menu lives in the kaleido overlay, whose
+    // symbols the generated translation unit must not name. So a draw callback is ATTACHED
+    // at init rather than baked into the row: one So2h_Ui_BindDraw call per panel.
+    //
+    // Cleared by So2h_Ui_Init ONLY. Never by So2h_Ui_Reset - that runs every frame the menu
+    // is off, and clearing there would unbind the whole menu the first time the game unpauses.
+    // A binding wins over the descriptor's own desc->draw, which stays available for content
+    // that does live in this module.
+    So2hUiDrawFn drawFn[SO2H_UI_MAX_NODES];
+    void* drawArg[SO2H_UI_MAX_NODES];
+    So2hUiCellStateFn cellFn[SO2H_UI_MAX_NODES];
+
     So2hUiId focus;
     s32 showHiddenPages;
     s32 initialised;

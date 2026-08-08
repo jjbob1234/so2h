@@ -307,6 +307,11 @@ void So2h_UiSfx_MixInto(s16* out, s32 frames) {
     // the SFX slider is a sequence-player port scale, so neither reaches this buffer by itself.
     vol = CVarGetFloat("gSettings.Audio.MasterVolume", 1.0f) * CVarGetFloat("gSettings.Audio.SoundEffectsVolume", 1.0f) *
           SO2H_UI_SFX_BUS;
+    // Dev hook. Muted here rather than at the trigger so the voices still allocate, run and
+    // free exactly as they would audibly - the pool is the thing being debugged.
+    if (CVarGetInteger("gSo2h.Ui.SfxMute", 0)) {
+        vol = 0.0f;
+    }
     if (vol <= 0.0f) {
         return;
     }

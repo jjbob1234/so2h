@@ -139,6 +139,15 @@ void So2h_Ui_Init(const So2hUiDesc* table, s32 count, const So2hUiVariant* varia
 
     // Parents-first is a hard requirement of the single-pass solver. A row that violates it
     // is dropped to HIDDEN rather than being allowed to read an unsolved parent rect.
+    // Registering a scene drops every content binding: the ids in the new table mean
+    // something different, so a stale callback would paint the wrong panel rather than
+    // simply not paint. Re-binding is the caller's job, immediately after this returns.
+    for (i = 0; i < SO2H_UI_MAX_NODES; i++) {
+        sCtx.drawFn[i] = NULL;
+        sCtx.drawArg[i] = NULL;
+        sCtx.cellFn[i] = NULL;
+    }
+
     for (i = 0; i < count; i++) {
         sCtx.stateOverride[i] = 0xFF;
 
@@ -267,6 +276,25 @@ void So2h_Ui_SetShowHiddenPages(s32 show) {
 
 s32 So2h_Ui_GetShowHiddenPages(void) {
     return sCtx.showHiddenPages;
+}
+
+// ---------------------------------------------------------------------------------------
+// Content bindings. See So2h_Ui_BindDraw in so2h_ui.h for why these are attached at runtime
+// instead of being fields the generator fills in.
+// ---------------------------------------------------------------------------------------
+void So2h_Ui_BindDraw(So2hUiId id, So2hUiDrawFn fn, void* user) {
+    if (!So2h_UiNode_IsValid(id)) {
+        return;
+    }
+    sCtx.drawFn[id] = fn;
+    sCtx.drawArg[id] = user;
+}
+
+void So2h_Ui_BindCellState(So2hUiId id, So2hUiCellStateFn fn) {
+    if (!So2h_UiNode_IsValid(id)) {
+        return;
+    }
+    sCtx.cellFn[id] = fn;
 }
 
 void So2h_Ui_ScrollTo(So2hUiId row, s16 index) {

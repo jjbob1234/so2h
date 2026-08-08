@@ -2170,6 +2170,48 @@ void BenMenu::AddDevTools() {
         .CVar("gWindows.MessageViewer")
         .Options(ButtonOptions().Tooltip("Enables the Message Viewer window for testing in-game messages."))
         .WindowName("Message Viewer");
+
+    // SO2H [Menu] so2h_ui dev hooks. All six are read by mm/2s2h/Menu/so2h_pause_menu.c (and
+    // so2h_ui_sfx.c for the mute), all default to off/neutral, and none of them are compiled
+    // out at the call site - the defaults ARE the release behaviour.
+    path = { "Dev Tools", "SO2H Menu", SECTION_COLUMN_1 };
+    AddSidebarEntry("Dev Tools", "SO2H Menu", 1);
+    AddWidget(path, "Force Menu Open", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSo2h.Ui.ForceOpen")
+        .Options(CheckboxOptions().Tooltip(
+            "Keeps the merged pause menu on screen regardless of pause state, so the layout can be inspected "
+            "without holding the game paused."));
+    AddWidget(path, "Show Hidden Pages", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSo2h.Ui.ShowHiddenPages")
+        .Options(CheckboxOptions().Tooltip(
+            "Reveals the pages that are authored but not yet enabled (Equipment, Items, Masks, Data, Songs)."));
+    AddWidget(path, "Draw Node Outlines", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSo2h.Ui.Outlines")
+        .Options(CheckboxOptions().Tooltip(
+            "Draws a 1px box around every visible node's solved rect, coloured by node index."));
+    AddWidget(path, "Mute Menu SFX", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSo2h.Ui.SfxMute")
+        .Options(CheckboxOptions().Tooltip(
+            "Silences the menu's own voice pool. The voices still allocate and run, so this mutes the sound "
+            "without changing what the pool is doing."));
+    AddWidget(path, "Animation Speed: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gSo2h.Ui.TimeScale")
+        .Options(FloatSliderOptions()
+                     .Tooltip("Speed of the menu's entrance and exit. 0% freezes it mid-animation.")
+                     .ShowAdjustmentButtons(false)
+                     .IsPercentage()
+                     .Format("")
+                     .DefaultValue(1.0f)
+                     .Min(0.0f)
+                     .Max(4.0f));
+    AddWidget(path, "Replay Entrance", WIDGET_BUTTON)
+        .Callback([](WidgetInfo& info) {
+            // A counter, not a flag: the controller re-runs the entrance when the value
+            // changes, so nothing has to clear it again and it cannot misfire on the frame
+            // the window loses focus.
+            CVarSetInteger("gSo2h.Ui.Replay", CVarGetInteger("gSo2h.Ui.Replay", 0) + 1);
+        })
+        .Options(ButtonOptions().Tooltip("Restarts the open animation with a fresh jitter seed."));
 }
 
 BenMenu::BenMenu(const std::string& consoleVariable, const std::string& name)

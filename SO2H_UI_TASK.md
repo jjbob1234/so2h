@@ -156,3 +156,109 @@ dumps an annotated contact sheet with slice indices and the run band marked.
 - Below about 40 units the 5-cell frames drop their middle cell entirely rather than emit a
   zero-width quad. The frame reads as `A B C D` at that size. Degenerate but bounded, monotone
   and terminating - noted rather than changed.
+
+## 2026-08-07 — preview loop online
+- New sheet registered: `gSo2hSheetFrameGlass` (Base-Semi-Transparent_Window, 320x320,
+  5x5 @64, run band (2,2) both axes, interior a flat alpha-176 wash). This is now the
+  default backing for ANY window drawn OVER live content. Sheet count 54 -> 55.
+- `gSo2hSheetMiniButton` now has named slices. Arrows are row 2:
+  ARROW_LEFT (0,2) ARROW_UP (1,2) ARROW_DOWN (2,2) ARROW_RIGHT (3,2).
+  The two bottom-corner page buttons draw these at native 32x32 — no bespoke arrow art.
+- `tools/so2h_ui_model.py` smoke-run: builds, settles, agrees with the C on tile size
+  (7.773) and on screen x0 (-53.33 at 16:9). solve_frame_axis(5, band 2..2) yields
+  A B [C C C] D E — one middle cell repeated, as specified.
+- `tools/so2h_ui_render.py` written and working: renders a declared tree to PNG from the
+  real sheets at any aspect, software-clipped exactly like the C. This is the approval
+  loop — Jay judges the look with no Windows build.
+- `tools/scenes/pause.py` — the menu as DATA. First pass geometry is eyeballed off the
+  mockup and is WRONG; it is the thing to correct, and correcting it is edits to this
+  one file only, zero solver changes. That is the acceptance test passing.
+
+## Border width — now first-class (2026-08-07)
+Jay: "you're not accounting for border width." Correct — children were solved against the
+parent's OUTER rect, so everything nested sat under the chrome. Fixed structurally, not by
+nudging numbers:
+
+- `So2hUiSheetDef` gains `borderL/T/R/B` in SOURCE TEXELS. Separate from the run band on
+  purpose: the run band says which cell repeats, the border says how much of the art is
+  chrome, and on the decorated frames those differ.
+- `sheets.json` gains `"border"` (number, `[x,y]`, or `[l,t,r,b]`). Default one cell for a
+  sheet with a run band, zero for an atlas. Generator validates l+r < width, t+b < height.
+- Values measured off the art with a centre-band deviation scan, then rounded:
+  Filled 44/56/44/40, Empty 64, Raising 70/72/70/70, Backed 102/98/102/80,
+  Popup 70/72/70/70, Glass 72. Any of them is a one-line override.
+- `So2h_UiSheet_BorderPx` scales by `tilePx/unit` — the same scalar the frame art uses, so
+  a window and its own chrome cannot drift apart when the tile size changes.
+- `So2h_UiSolveCanon` deflates the parent rect by the parent's border before solving each
+  child, clamping to an empty centred box rather than inverting when a panel is narrower
+  than its own chrome. `So2h_UiIsFrameMode` gates it to NINESLICE/RUN/TILE.
+- `So2hUiDesc.ignoreBorder` opts a child out: tabs that straddle the border, overhanging
+  corner buttons, art that IS the border.
+- Mirrored in `so2h_ui_model.py` (`Ctx.border_px`, border table injected by the renderer)
+  so the preview insets exactly where the game will.
+
+All seven core files re-verified `gcc -fsyntax-only` clean. Generator OK, 55 sheets.
+
+---
+
+## Part B — the quest bar becomes content (2026-08-08)
+
+Part A shipped the engine deliberately inert. Part B is the first build where the menu
+actually opens in game and the SFX are audible.
+
+### The seam
+- **Content binding is RUNTIME, not generated.** `So2h_Ui_BindDraw(id, fn, user)` and
+  `So2h_Ui_BindCellState(id, fn)`. The generated descriptor table is `static const` and lives
+  in `mm/2s2h/Menu`; the content that paints quest icons lives in the kaleido overlay, whose
+  symbols that TU must never name. A binding wins over `desc->draw` / `desc->cellState`.
+- Bindings are cleared by `So2h_Ui_Init` **only** — never by `So2h_Ui_Reset`, which runs every
+  frame the menu is off and would unbind everything on the first unpause.
+- The overlay installs its binder through `So2h_PauseMenu_SetBindHook`, called from
+  `So2h_QuestBar_Reset`. Setting the same hook twice is a no-op, and setting it after
+  registration binds immediately, so the install cannot race the first update.
+- A draw callback is handed geometry only. Alpha is read back off `So2h_Ui_GetNode(id)->alpha`,
+  which is the same value the engine used for that node's own art this frame.
+- `So2h_Ui_GetGfxBudget()` added so a callback emitting raw `gfx++` applies the engine's guard
+  instead of keeping a second, divergent arena tail.
+
+### What went
+- `so2h_quest_bar.c` 1607 -> ~1030 lines. Deleted: 23 chrome drawers, the 19-entry cursor
+  neighbour table, `So2h_QuestBar_Navigate`, `So2h_QuestBar_Draw`, and every art table only
+  they used. MSVC hard-errors unused statics, so this had to be exhaustive.
+- `so2h_quest_layout.c/.h` deleted outright. With the solver superseded the whole file was
+  dead and only the `So2hRect` type was still referenced; content uses `So2hUiRect` directly.
+  Code only — no art was deleted, and all 43 legacy tiles stay on disk and registered.
+- Nav now delegates to `So2h_Ui_Navigate`. The boundary contract is untouched:
+  `So2h_QuestBar_IsCursorInBar`, special positions 12/13, and a failed move handed back to
+  vanilla rather than swallowed.
+
+### Cursor highlight
+Moved to `so2h_pause_menu.c`, drawn after `So2h_Ui_Draw` off `So2h_Ui_GetFocus()` +
+`So2h_Ui_GetRect()`. Same look as the old bar: `phase += 0x400`, `160 + 95*Math_SinS`, RGB
+255/255/160, four 1px edges. Whether the cursor is in the menu is PUSHED in by the overlay
+(`So2h_PauseMenu_SetCursorInMenu`) rather than read out of `PauseContext`, because
+`PAUSE_CURSOR_QUEST_BAR_RIGHT/_BOTTOM` are defined in overlay-private `z_kaleido_scope.h` and
+copying their values would put a second, silently divergent boundary contract in the tree.
+
+### Dev hooks — all six, Dev Tools -> SO2H Menu
+`gSo2h.Ui.ForceOpen`, `.ShowHiddenPages`, `.Replay` (a counter, not a flag), `.TimeScale`,
+`.Outlines`, `.SfxMute`. All default to off/neutral and none is `#ifdef`'d at the call site —
+the defaults ARE the release behaviour.
+- **TimeScale** is applied as whole animation STEPS in an accumulator in front of the advance
+  block, not as a multiplier inside each curve, so slowing the entrance down cannot change
+  where anything lands. `0.0f` freezes it; capped at `SO2H_UI_MAX_TIME_STEPS` (8).
+- **SfxMute** zeroes the bus inside the pool's mix, so voices still allocate, run and free
+  exactly as they would audibly — the pool is the thing being debugged.
+
+### Songs — scope
+The 12 declared cells map to songs 0..11 and keep the scene's baked note slices; content adds
+only the unowned scrim and the red cross. Songs 12..21 and the `SONG_PAGE_L`/`SONG_PAGE_R`
+arrows are deferred: an A-button page flip needs button plumbing `So2h_QuestBar_UpdateCursor`
+does not have, and content-drawing the note glyph would kill the approved render.
+
+### Verification (host-side; no MSVC/CMake compile has ever been run here)
+11-file `gcc -fsyntax-only` sweep at zero non-`BTN_` diagnostics; `so2h_gen_scene --check` and
+`so2h_gen_sheets --check` clean; zero rect drift (107 @16:9, 100 @4:3); `so2h_ui_sim.py`
+418,603 assertions OK; `--selfcheck` 28/28 constants matched. `z_kaleido_scope_NES.c` was
+diffed against HEAD for new diagnostics — none; its host-sweep noise is pre-existing vanilla
+GBI noise the real build does not see.

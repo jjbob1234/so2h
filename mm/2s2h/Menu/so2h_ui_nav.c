@@ -127,10 +127,15 @@ static s32 So2h_UiNavCellEnabled(So2hUiId id, s16 index) {
     if ((d == NULL) || (index < 0) || (index >= (s16)count)) {
         return 0;
     }
-    if (d->cellState == NULL) {
-        return 1;
+    {
+        // A runtime binding wins over the descriptor's own predicate; see So2h_Ui_BindCellState.
+        So2hUiCellStateFn fn = (So2h_UiCtx()->cellFn[id] != NULL) ? So2h_UiCtx()->cellFn[id] : d->cellState;
+
+        if (fn == NULL) {
+            return 1;
+        }
+        return fn(id, index) == SO2H_UI_ENABLED;
     }
-    return d->cellState(id, index) == SO2H_UI_ENABLED;
 }
 
 /**

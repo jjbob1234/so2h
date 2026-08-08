@@ -228,6 +228,14 @@ typedef enum So2hUiRevealFrom {
 typedef struct So2hUiStyle {
     u16 sheet;  // So2hUiSheetId, or SO2H_UI_INVALID
     u16 slice;  // named slice within that sheet, or SO2H_UI_INVALID
+    // PER-NODE ART SCALE, 1.0 = the sheet drawn at the canon tile size. The collage puts the
+    // same sheets on screen at very different sizes, so a window states how big ITS tile is
+    // and the border art keeps its proportions instead of stretching. The rings scale with
+    // it - solved against parentTile * parentScale - or the chrome and the content it is
+    // supposed to contain drift apart as soon as a frame is drawn at anything but 1.0.
+    // Derive it from the size you want (scale = wantedSize / (tiles * srcTexels)); never
+    // pick a scale first and let the size fall out of it.
+    f32 scale;
     u8 drawMode; // So2hUiDrawMode
     u8 reveal;   // So2hUiReveal
     u8 r, g, b;  // tint; 255,255,255 for untinted
@@ -491,6 +499,28 @@ typedef struct So2hUiNode {
  */
 void So2h_Ui_Init(const So2hUiDesc* table, s32 count, const So2hUiVariant* variants, s32 variantCount);
 
+/*
+ * Attach content to an already-registered node.
+ *
+ * The descriptor table is generated from tools/scenes/pause.py and is static const, and the
+ * code that actually paints quest icons and song notes lives in the kaleido overlay, which
+ * the generated file must not name. So content is bound at runtime instead of being written
+ * into the row: the scene says WHERE a panel is, the binding says WHAT is drawn in it, and
+ * neither one has to know about the other.
+ *
+ * Adding a panel therefore stays at one row in the scene plus one callback and its bind line
+ * - no layout, clipping, navigation or asset code is touched.
+ *
+ * Bindings survive So2h_Ui_Reset and are cleared only by So2h_Ui_Init. Passing NULL unbinds.
+ * `user` is handed back to the callback verbatim; the engine never dereferences it.
+ */
+void So2h_Ui_BindDraw(So2hUiId id, So2hUiDrawFn fn, void* user);
+
+// Attach a per-cell enable predicate to a GRID / RUN / SCROLL_ROW, so navigation skips the
+// cells content considers empty. Same lifetime rules as So2h_Ui_BindDraw. Overrides the
+// descriptor's own cellState.
+void So2h_Ui_BindCellState(So2hUiId id, So2hUiCellStateFn fn);
+
 /**
  * Requests an off-screen content swap on a REVEAL_SWAP node (see So2hUiReveal).
  * The node drives off the bottom of the screen, `apply` is invoked once at the bottom of
@@ -535,7 +565,28 @@ Gfx* So2h_Ui_Draw(Gfx* gfx);
  *
  * Passing NULL disables the guard, which is only correct for the host-side simulator.
  */
+/*
+ * DEV HOOKS
+ * ---------------------------------------------------------------------------------------
+ * Six of them, all off/neutral by default and all driven from CVars by so2h_pause_menu.c, so
+ * nothing here has to be #ifdef'd at a call site. Two live in the engine (below), one in the
+ * SFX pool (gSo2h.Ui.SfxMute, read in so2h_ui_sfx.c) and three in the controller
+ * (ForceOpen, ShowHiddenPages, Replay).
+ */
+
+// Animation speed multiplier. 1.0f is real time, 0.0f freezes the menu mid-entrance. Applied
+// as whole animation steps in front of the advance block, so slowing the entrance down cannot
+// move where anything lands.
+void So2h_Ui_SetTimeScale(f32 scale);
+
+// Draw a 1px box around every visible node's solved rect, over everything else.
+void So2h_Ui_SetOutlines(s32 on);
+
 void So2h_Ui_SetGfxBudget(Gfx* end);
+
+// The tail currently armed, so a bound draw callback emitting raw gfx++ of its own can
+// apply the same guard instead of writing past the arena the engine is respecting.
+Gfx* So2h_Ui_GetGfxBudget(void);
 
 // ---------------------------------------------------------------------------------------
 // Queries
@@ -675,21 +726,11 @@ u16 So2h_Ui_Slice(u16 sheet, s16 col, s16 row);
  * around it - there is no second, privileged way to put art on screen.
  *
  * `clip` may be NULL for "the whole screen"; normally a callback passes the clipRect of the
- * node it was called for. `mode` is a So2hUiDrawMode.
+ * node it was called for. `mode` is a So2hUiDrawMode. `scale` is the caller's art scale -
+ * pass the node's own style.scale, or 1.0f for canon size.
  */
 Gfx* So2h_UiDraw_Slice(Gfx* gfx, u16 sheet, u16 slice, const So2hUiRect* rect, const So2hUiRect* clip, u8 mode, u8 r,
-                       u8 g, u8 b, u8 a);
-
-/**
- * Draws one slice of one sheet into one rect. This is the single emitter the tree walk itself
- * uses, exposed so a So2hUiDrawFn callback draws through exactly the same path as the chrome
- * around it - there is no second, privileged way to put art on screen.
- *
- * `clip` may be NULL for "the whole screen"; normally a callback passes the clipRect of the
- * node it was called for. `mode` is a So2hUiDrawMode.
- */
-Gfx* So2h_UiDraw_Slice(Gfx* gfx, u16 sheet, u16 slice, const So2hUiRect* rect, const So2hUiRect* clip, u8 mode, u8 r,
-                       u8 g, u8 b, u8 a);
+                       u8 g, u8 b, u8 a, f32 scale);
 
 // ---------------------------------------------------------------------------------------
 // Shared easing, exposed so content callbacks animate on the same curve as the chrome.

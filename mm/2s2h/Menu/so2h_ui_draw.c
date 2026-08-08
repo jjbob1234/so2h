@@ -83,6 +83,10 @@ void So2h_Ui_SetGfxBudget(Gfx* end) {
     sGfxBudgetEnd = end;
 }
 
+Gfx* So2h_Ui_GetGfxBudget(void) {
+    return sGfxBudgetEnd;
+}
+
 static s32 So2h_UiGfxRoom(Gfx* gfx, s32 need) {
     return (sGfxBudgetEnd == NULL) || ((gfx + need + SO2H_UI_GFX_RESERVE) < sGfxBudgetEnd);
 }
@@ -320,10 +324,14 @@ static void So2h_UiCellSrc(const So2hUiSheetDef* sheet, s16 col, s16 row, f32* s
  * against a 988 px tall mock, and ctx->tile is what one of those 32 px units measures on
  * screen - so a 64 px cell is two of them. Nothing here reads a hardcoded pixel size.
  */
-static f32 So2h_UiCellScreen(const So2hUiSheetDef* sheet) {
+static f32 So2h_UiCellScreen(const So2hUiSheetDef* sheet, f32 scale) {
     So2hUiCtx* ctx = So2h_UiCtx();
 
-    return ((f32)sheet->unit / 32.0f) * ctx->tile;
+    if (scale <= 0.0f) {
+        scale = 1.0f;
+    }
+
+    return ((f32)sheet->unit / 32.0f) * ctx->tile * scale;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -444,14 +452,14 @@ static s32 So2h_UiSolveFrameAxis(s32 n, s32 lo, s32 hi, f32 cell, f32 span, s32 
 #define SO2H_UI_FRAME_MAX_CELLS 96
 
 static Gfx* So2h_UiDrawFrame(Gfx* gfx, const So2hUiSheetDef* sheet, const So2hUiRect* dst, const So2hUiRect* clip,
-                             s32 repeat, s32 hollow) {
+                             s32 repeat, s32 hollow, f32 scale) {
     f32 xPos[SO2H_UI_FRAME_MAX_CELLS];
     f32 xSize[SO2H_UI_FRAME_MAX_CELLS];
     s16 xCell[SO2H_UI_FRAME_MAX_CELLS];
     f32 yPos[SO2H_UI_FRAME_MAX_CELLS];
     f32 ySize[SO2H_UI_FRAME_MAX_CELLS];
     s16 yCell[SO2H_UI_FRAME_MAX_CELLS];
-    f32 cell = So2h_UiCellScreen(sheet);
+    f32 cell = So2h_UiCellScreen(sheet, scale);
     s32 nx;
     s32 ny;
     s32 ix;
@@ -523,8 +531,8 @@ static Gfx* So2h_UiDrawFrame(Gfx* gfx, const So2hUiSheetDef* sheet, const So2hUi
  * backdrops and for the extendable strips (SongPreviewBackDrop's middle is exactly this).
  */
 static Gfx* So2h_UiDrawTiled(Gfx* gfx, const So2hUiSheetDef* sheet, u16 slice, const So2hUiRect* dst,
-                             const So2hUiRect* clip) {
-    f32 cell = So2h_UiCellScreen(sheet);
+                             const So2hUiRect* clip, f32 scale) {
+    f32 cell = So2h_UiCellScreen(sheet, scale);
     f32 sx;
     f32 sy;
     f32 sw;
@@ -579,7 +587,7 @@ static Gfx* So2h_UiDrawTiled(Gfx* gfx, const So2hUiSheetDef* sheet, u16 slice, c
 // callback could take that the walk does not also take.
 // ---------------------------------------------------------------------------------------
 Gfx* So2h_UiDraw_Slice(Gfx* gfx, u16 sheetId, u16 slice, const So2hUiRect* rect, const So2hUiRect* clip, u8 mode,
-                       u8 r, u8 g, u8 b, u8 a) {
+                       u8 r, u8 g, u8 b, u8 a, f32 scale) {
     const So2hUiSheetDef* sheet = So2h_UiSheet_Def(sheetId);
     So2hUiRect fullClip;
     f32 sx;
@@ -604,22 +612,22 @@ Gfx* So2h_UiDraw_Slice(Gfx* gfx, u16 sheetId, u16 slice, const So2hUiRect* rect,
         // asking for NINESLICE on a run-grow sheet still gets whole native tiles.
         case SO2H_UI_DRAW_NINESLICE:
         case SO2H_UI_DRAW_RUN:
-            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, sheet->grow != SO2H_UI_GROW_STRETCH, false);
+            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, sheet->grow != SO2H_UI_GROW_STRETCH, false, scale);
             break;
 
         // The frame's chrome only - the fill cells are skipped, so the rect has a real hole in
         // it. Same solver, same seams, one flag.
         case SO2H_UI_DRAW_RING:
-            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, sheet->grow != SO2H_UI_GROW_STRETCH, true);
+            gfx = So2h_UiDrawFrame(gfx, sheet, rect, clip, sheet->grow != SO2H_UI_GROW_STRETCH, true, scale);
             break;
 
         case SO2H_UI_DRAW_TILE:
-            gfx = So2h_UiDrawTiled(gfx, sheet, slice, rect, clip);
+            gfx = So2h_UiDrawTiled(gfx, sheet, slice, rect, clip, scale);
             break;
 
         case SO2H_UI_DRAW_NATIVE: {
             So2hUiRect nat;
-            f32 cell = So2h_UiCellScreen(sheet);
+            f32 cell = So2h_UiCellScreen(sheet, scale);
             f32 cx = (rect->x0 + rect->x1) * 0.5f;
             f32 cy = (rect->y0 + rect->y1) * 0.5f;
 
@@ -688,6 +696,72 @@ static void So2h_UiApplyUnroll(const So2hUiDesc* d, const So2hUiNode* n, So2hUiR
     }
 }
 
+// ---------------------------------------------------------------------------------------
+// Dev outlines
+//
+// One 1px box per visible node, drawn over everything after the layer walk. The colour is
+// keyed off the node index so two adjacent windows never come out the same shade, which is
+// most of what makes this useful when a rect lands somewhere unexpected.
+// ---------------------------------------------------------------------------------------
+static s32 sOutlines = 0;
+
+void So2h_Ui_SetOutlines(s32 on) {
+    sOutlines = on;
+}
+
+static u32 So2h_UiOutlineMix(u32 v) {
+    v ^= v >> 16;
+    v *= 0x7FEB352Du;
+    v ^= v >> 15;
+    v *= 0x846CA68Bu;
+    v ^= v >> 16;
+
+    return v;
+}
+
+static Gfx* So2h_UiOutlineEdge(Gfx* gfx, s16 x0, s16 y0, s16 x1, s16 y1, u8 r, u8 g, u8 b) {
+    if ((x1 <= x0) || (y1 <= y0) || !So2h_UiGfxRoom(gfx, 4)) {
+        return gfx;
+    }
+    gDPPipeSync(gfx++);
+    gDPSetCombineMode(gfx++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    gDPSetPrimColor(gfx++, 0, 0, r, g, b, 200);
+    gDPFillWideRectangle(gfx++, x0, y0, x1, y1);
+
+    return gfx;
+}
+
+static Gfx* So2h_UiDrawOutlines(Gfx* gfx, So2hUiCtx* ctx) {
+    s32 i;
+
+    for (i = 0; i < ctx->descCount; i++) {
+        const So2hUiNode* n = &ctx->node[i];
+        u32 h = So2h_UiOutlineMix((u32)i + 1u);
+        u8 r = (u8)(96 + (h & 0x7F));
+        u8 g = (u8)(96 + ((h >> 8) & 0x7F));
+        u8 b = (u8)(96 + ((h >> 16) & 0x7F));
+        s16 x0;
+        s16 y0;
+        s16 x1;
+        s16 y1;
+
+        if (!n->visible || (n->alpha <= 0.0f)) {
+            continue;
+        }
+        x0 = So2h_UiRnd(n->rect.x0);
+        y0 = So2h_UiRnd(n->rect.y0);
+        x1 = So2h_UiRnd(n->rect.x1);
+        y1 = So2h_UiRnd(n->rect.y1);
+
+        gfx = So2h_UiOutlineEdge(gfx, x0, y0, x1, (s16)(y0 + 1), r, g, b);
+        gfx = So2h_UiOutlineEdge(gfx, x0, (s16)(y1 - 1), x1, y1, r, g, b);
+        gfx = So2h_UiOutlineEdge(gfx, x0, y0, (s16)(x0 + 1), y1, r, g, b);
+        gfx = So2h_UiOutlineEdge(gfx, (s16)(x1 - 1), y0, x1, y1, r, g, b);
+    }
+
+    return gfx;
+}
+
 Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
     So2hUiCtx* ctx = So2h_UiCtx();
     s32 layer;
@@ -713,6 +787,8 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
             const So2hUiDesc* d = &ctx->desc[i];
             const So2hUiNode* n = &ctx->node[i];
             So2hUiRect rect;
+            So2hUiDrawFn drawFn;
+            void* drawArg;
             u8 alpha;
 
             if (!n->visible || (d->style.layer != layer)) {
@@ -736,10 +812,14 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
                 u8 cb = (d->style.r | d->style.g | d->style.b) ? d->style.b : 255;
 
                 gfx = So2h_UiDraw_Slice(gfx, d->style.sheet, d->style.slice, &rect, &n->clipRect, d->style.drawMode,
-                                        cr, cg, cb, alpha);
+                                        cr, cg, cb, alpha, d->style.scale);
             }
 
-            if (d->draw != NULL) {
+            // A runtime binding wins over the descriptor's own callback; see So2h_Ui_BindDraw.
+            drawFn = (ctx->drawFn[i] != NULL) ? ctx->drawFn[i] : d->draw;
+            drawArg = (ctx->drawFn[i] != NULL) ? ctx->drawArg[i] : NULL;
+
+            if (drawFn != NULL) {
                 // A callback gets a hardware scissor because we cannot crop what it emits.
                 // It is approximate on the widescreen wings; see the file header.
                 if (d->clip != SO2H_UI_CLIP_SPILL) {
@@ -750,7 +830,7 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
                     scissored = 0;
                 }
 
-                gfx = d->draw(gfx, (So2hUiId)i, &rect, NULL);
+                gfx = drawFn(gfx, (So2hUiId)i, &rect, drawArg);
 
                 if (scissored) {
                     gfx = So2h_UiScissorFull(gfx);
@@ -758,6 +838,11 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
                 }
             }
         }
+    }
+
+    if (sOutlines) {
+        gfx = So2h_UiScissorFull(gfx);
+        gfx = So2h_UiDrawOutlines(gfx, ctx);
     }
 
     return So2h_UiRestoreBlend(gfx);

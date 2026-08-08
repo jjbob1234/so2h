@@ -30,6 +30,7 @@
 
 // #region SO2H [Menu] shrunken pause window + backwards-L quest/song bar
 #include "2s2h/Menu/so2h_pause_window.h"
+#include "2s2h/Menu/so2h_pause_menu.h"
 #include "so2h_quest_bar.h"
 // #endregion
 
@@ -3692,14 +3693,19 @@ void KaleidoScope_Draw(PlayState* play) {
 
             // SO2H [Menu]: while the cursor is parked in one of the quest bar arms it is
             // outside the shrunken window entirely, so the 3D cursor is suppressed and
-            // So2h_QuestBar_Draw renders a 2D highlight on the selected cell instead.
+            // So2h_PauseMenu_Draw renders a 2D highlight on the focused node instead.
             if ((pauseCtx->state == PAUSE_STATE_MAIN) && !So2h_QuestBar_IsCursorInBar(pauseCtx)) {
                 KaleidoScope_DrawCursor(play);
             }
 
             // SO2H [Menu]: drawn last and on OVERLAY_DISP with the full screen scissor
             // restored, so it is never clipped or scaled by the window viewport above.
-            So2h_QuestBar_Draw(play);
+            //
+            // This is so2h_ui now, not the hand-rolled quest bar. The entire collage - walls,
+            // windows, quest grid, songs, toolbar - comes out of the generated descriptor
+            // table (mm/2s2h/Menu/so2h_ui_scene_pause.c, from tools/scenes/pause.py), so
+            // adding a panel is a row in the scene and never a line in this file.
+            So2h_PauseMenu_Draw(play);
 
             if ((pauseCtx->state >= PAUSE_STATE_GAMEOVER_3) && (pauseCtx->state <= PAUSE_STATE_GAMEOVER_10) &&
                 (play->gameOverCtx.state != GAMEOVER_INACTIVE)) {
@@ -3852,9 +3858,13 @@ void KaleidoScope_Update(PlayState* play) {
     // vanilla full-screen scene. Note the window is read by z_play.c's background blit too,
     // hence the state lives in 2s2h/Menu rather than in this overlay.
     So2h_PauseWindow_Update(pauseCtx->state, IS_PAUSE_STATE_OWL_WARP(pauseCtx));
+    // The menu engine is advanced from the same place and in the same breath, because every
+    // rect anything reads later this frame - the cursor test, the draw - is solved in here.
+    So2h_PauseMenu_Update(pauseCtx->state, IS_PAUSE_STATE_OWL_WARP(pauseCtx));
     if ((pauseCtx->state == PAUSE_STATE_OFF) || (pauseCtx->state == PAUSE_STATE_OPENING_0) ||
         (pauseCtx->state == PAUSE_STATE_OPENING_1)) {
         So2h_QuestBar_Reset();
+        So2h_PauseMenu_Reset();
     }
     // #endregion
 

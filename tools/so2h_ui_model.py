@@ -359,7 +359,10 @@ class Ctx(object):
             n = self.node[i]
             n.state = state
             n.visible = state != HIDDEN
-            n.focusable = (state == ENABLED and d.kind not in (DECOR, GROUP, PAGEGROUP))
+            # Allow-list, mirroring so2h_ui_layout.c: a CELL or a container is a focus
+            # target, all other chrome is not. See the comment there for why.
+            n.focusable = (state == ENABLED and
+                           (d.kind == CELL or d.layout in (GRID, RUN, SCROLL_ROW, SCROLL_COL)))
 
     # -- geometry -----------------------------------------------------------------------
     @staticmethod

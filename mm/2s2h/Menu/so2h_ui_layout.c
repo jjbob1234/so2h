@@ -483,7 +483,12 @@ static void So2h_UiSolveCanon(So2hUiCtx* ctx, s32 canon) {
                 const So2hUiDesc* pd = &ctx->desc[d->parent];
 
                 if (So2h_UiIsFrameMode(pd->style.drawMode)) {
-                    So2h_UiSheet_RingPx(pd->style.sheet, d->attach, ctx->tile, &bl, &bt, &br, &bb);
+                    // The parent's OWN scale, not this node's: the ring is part of the
+                    // parent's chrome, so a half-size window has half-size borders and its
+                    // children have to be inset by that, not by the canon width.
+                    f32 pScale = (pd->style.scale > 0.0f) ? pd->style.scale : 1.0f;
+
+                    So2h_UiSheet_RingPx(pd->style.sheet, d->attach, ctx->tile * pScale, &bl, &bt, &br, &bb);
                 }
             }
 
@@ -551,8 +556,16 @@ static void So2h_UiResolveStates(So2hUiCtx* ctx) {
 
         ctx->node[i].state = state;
         ctx->node[i].visible = (state != SO2H_UI_HIDDEN);
-        ctx->node[i].focusable = (state == SO2H_UI_ENABLED) && (d->kind != SO2H_UI_DECOR) &&
-                                 (d->kind != SO2H_UI_GROUP) && (d->kind != SO2H_UI_PAGEGROUP);
+        // FOCUS IS OPT-IN, and the opt-in is the node's kind. A CELL is a thing the cursor
+        // can sit on; a container (GRID / RUN / SCROLL) is one focus target addressed by an
+        // index. Everything else - the walls, the windows, the frames, the groups - is
+        // chrome, and chrome must never swallow the cursor. Stated as an allow-list rather
+        // than the old deny-list because the pause scene is ~100 PANELs and 15 CELLs: with a
+        // deny-list every new window Jay adds silently becomes a navigation stop.
+        ctx->node[i].focusable = (state == SO2H_UI_ENABLED) &&
+                                 ((d->kind == SO2H_UI_CELL) || (d->layout == SO2H_UI_LAYOUT_GRID) ||
+                                  (d->layout == SO2H_UI_LAYOUT_RUN) || (d->layout == SO2H_UI_LAYOUT_SCROLL_ROW) ||
+                                  (d->layout == SO2H_UI_LAYOUT_SCROLL_COL));
     }
 }
 
@@ -713,6 +726,23 @@ static s32 So2h_UiCloseDelay(So2hUiCtx* ctx, s32 i) {
  * Reveal is one shared 0..1 per node on the same curve as everything else, so FADE, SLIDE,
  * FALL, POP, GROW and UNROLL are six readings of one number rather than six animation systems.
  */
+// Dev time scale. 1.0f is real time; the hook is clamped, never negative, and a runaway value
+// cannot spend more than SO2H_UI_MAX_TIME_STEPS frames of animation in one update.
+#define SO2H_UI_MAX_TIME_STEPS 8
+
+static f32 sTimeScale = 1.0f;
+static f32 sTimeAcc = 0.0f;
+
+void So2h_Ui_SetTimeScale(f32 scale) {
+    if (!(scale >= 0.0f)) {
+        scale = 1.0f; // also catches NaN
+    }
+    if (scale > (f32)SO2H_UI_MAX_TIME_STEPS) {
+        scale = (f32)SO2H_UI_MAX_TIME_STEPS;
+    }
+    sTimeScale = scale;
+}
+
 static void So2h_UiAdvanceReveals(So2hUiCtx* ctx) {
     s32 i;
 
@@ -1171,9 +1201,31 @@ void So2h_UiLayout_Update(void) {
 
     // Cheap no-op once the two custom samples are in the SYSTEM bank; retries until audio is up.
     So2h_UiSfx_Bind();
-    So2h_UiAdvanceReveals(ctx);
-    So2h_UiAdvanceSlides(ctx);
-    So2h_UiAdvanceGrows(ctx);
-    So2h_UiAdvanceSwaps(ctx);
-    So2h_UiAdvanceClose(ctx);
+
+    // Dev time scale. One accumulator in front of the whole animation block rather than a
+    // multiplier inside each curve: every reveal, slide, grow, swap and close step stays an
+    // integer frame, so slowing the entrance down cannot change where anything lands. 0.0f
+    // freezes it exactly where it is, which is the point of the hook.
+    {
+        s32 steps;
+
+        sTimeAcc += sTimeScale;
+        steps = (s32)sTimeAcc;
+        if (steps > SO2H_UI_MAX_TIME_STEPS) {
+            steps = SO2H_UI_MAX_TIME_STEPS;
+        }
+        if (steps < 0) {
+            steps = 0;
+        }
+        sTimeAcc -= (f32)steps;
+
+        while (steps > 0) {
+            So2h_UiAdvanceReveals(ctx);
+            So2h_UiAdvanceSlides(ctx);
+            So2h_UiAdvanceGrows(ctx);
+            So2h_UiAdvanceSwaps(ctx);
+            So2h_UiAdvanceClose(ctx);
+            steps--;
+        }
+    }
 }

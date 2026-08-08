@@ -78,8 +78,9 @@ s32 So2h_QuestBar_IsCursorInBar(PauseContext* pauseCtx);
 // KaleidoScope_HandlePageToggles.
 s32 So2h_QuestBar_UpdateCursor(PlayState* play);
 
-// Draws the whole L bar. Must be called with the full-screen viewport/scissor available,
-// i.e. after the pause window passes are done.
-void So2h_QuestBar_Draw(PlayState* play);
+// Binds every content callback in this file to its node id in the generated pause scene.
+// Must run after So2h_Ui_Init; So2h_PauseMenu_SetBindHook owns that ordering. There is no
+// draw entry point any more - the engine walks the scene and calls back into here.
+void So2h_QuestBar_Bind(void);
 
 #endif // SO2H_QUEST_BAR_H
