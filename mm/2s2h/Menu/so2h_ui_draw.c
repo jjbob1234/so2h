@@ -229,11 +229,20 @@ static Gfx* So2h_UiDrawQuad(Gfx* gfx, const So2hUiSheetDef* sheet, f32 sx, f32 s
     s16 y1;
     u16 dsdx;
     u16 dtdy;
+    s32 uls;
+    s32 ult;
+    s32 lrs;
+    s32 lrt;
 
     if ((sheet == NULL) || (sheet->texture == NULL)) {
         return gfx;
     }
-    if ((dw < SO2H_UI_MIN_QUAD_PX) || (dh < SO2H_UI_MIN_QUAD_PX) || (sw <= 0.0f) || (sh <= 0.0f)) {
+    // A source rect thinner than one texel is not just invisible, it is fatal. gDPLoadTextureTile
+    // wants an INCLUSIVE lower-right texel, so a sub-texel width makes lrs < uls, and LUS computes
+    // `uint32_t tile_width = ((lrs - uls) >> G_TEXTURE_IMAGE_FRAC) + 1` (libultraship
+    // fast/interpreter.cpp GfxDpLoadTile) - that subtraction wraps to ~4 billion, size_bytes goes
+    // with it, and ImportTextureRgba32's unbounded copy loop hangs the process. Never emit one.
+    if ((dw < SO2H_UI_MIN_QUAD_PX) || (dh < SO2H_UI_MIN_QUAD_PX) || (sw < 1.0f) || (sh < 1.0f)) {
         return gfx;
     }
 
@@ -276,14 +285,37 @@ static Gfx* So2h_UiDrawQuad(Gfx* gfx, const So2hUiSheetDef* sheet, f32 sx, f32 s
     // Sub-rect sampling. This has been in the tree the whole time (mm/include/PR/gbi.h:3529,
     // used by PreRender.c:186 and z_fbdemo.c:86); the first pass never reached for it, which
     // is the entire reason every tile needed to be its own file.
+    // Belt and braces on top of the sub-texel reject above: build the inclusive tile bounds
+    // explicitly, clamp them into the texture, and keep lower-right >= upper-left so the
+    // unsigned width/height LUS derives from them can never wrap.
+    uls = (s32)sx;
+    ult = (s32)sy;
+    lrs = (s32)(sx + sw) - 1;
+    lrt = (s32)(sy + sh) - 1;
+    if (uls < 0) {
+        uls = 0;
+    }
+    if (ult < 0) {
+        ult = 0;
+    }
+    if (lrs > (sheet->width - 1)) {
+        lrs = sheet->width - 1;
+    }
+    if (lrt > (sheet->height - 1)) {
+        lrt = sheet->height - 1;
+    }
+    if ((lrs < uls) || (lrt < ult)) {
+        return gfx;
+    }
+
     if (sheet->fmt == SO2H_UI_FMT_IA8) {
-        gDPLoadTextureTile(gfx++, sheet->texture, G_IM_FMT_IA, G_IM_SIZ_8b, sheet->width, sheet->height, (s32)sx,
-                           (s32)sy, (s32)(sx + sw) - 1, (s32)(sy + sh) - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP,
-                           G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+        gDPLoadTextureTile(gfx++, sheet->texture, G_IM_FMT_IA, G_IM_SIZ_8b, sheet->width, sheet->height, uls, ult, lrs,
+                           lrt, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK,
+                           G_TX_NOLOD, G_TX_NOLOD);
     } else {
-        gDPLoadTextureTile(gfx++, sheet->texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, sheet->width, sheet->height, (s32)sx,
-                           (s32)sy, (s32)(sx + sw) - 1, (s32)(sy + sh) - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP,
-                           G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+        gDPLoadTextureTile(gfx++, sheet->texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, sheet->width, sheet->height, uls, ult,
+                           lrs, lrt, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK,
+                           G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
     }
     // s / t are S10.5 absolute texture-image coordinates, which is what gDPLoadTextureTile's
     // gDPSetTileSize leaves the tile expecting.
@@ -560,6 +592,8 @@ static Gfx* So2h_UiDrawTiled(Gfx* gfx, const So2hUiSheetDef* sheet, u16 slice, c
         for (x = dst->x0; (x < dst->x1) && (guardX < SO2H_UI_MAX_REPEATS); x += cell, guardX++) {
             So2hUiRect cellRect;
             f32 colW = So2h_UiMinF(cell, dst->x1 - x);
+            f32 qsw = sw * (colW / cell);
+            f32 qsh = sh * (rowH / cell);
 
             if ((x + cell) < clip->x0) {
                 continue;
@@ -567,12 +601,18 @@ static Gfx* So2h_UiDrawTiled(Gfx* gfx, const So2hUiSheetDef* sheet, u16 slice, c
             if (x > clip->x1) {
                 break;
             }
+            // The trailing tile of a row or column is cropped, and a rect whose width is not a
+            // whole number of tiles leaves a sliver behind. Cropping the source by the same
+            // fraction can put it under one texel, which is a degenerate tile - drop it instead.
+            if ((qsw < 1.0f) || (qsh < 1.0f)) {
+                continue;
+            }
             cellRect.x0 = x;
             cellRect.x1 = x + colW;
             cellRect.y0 = y;
             cellRect.y1 = y + rowH;
 
-            gfx = So2h_UiDrawQuad(gfx, sheet, sx, sy, sw * (colW / cell), sh * (rowH / cell), &cellRect, clip);
+            gfx = So2h_UiDrawQuad(gfx, sheet, sx, sy, qsw, qsh, &cellRect, clip);
         }
     }
 
