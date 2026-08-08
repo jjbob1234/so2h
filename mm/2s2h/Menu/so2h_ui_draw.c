@@ -79,6 +79,32 @@
 
 static Gfx* sGfxBudgetEnd = NULL;
 
+// ---------------------------------------------------------------------------------------
+// Freeze diagnostics
+//
+// The pause hang leaves no log line and no stack, so the engine has to narrate itself. Two
+// hooks, both off unless a CVar turns them on:
+//
+//   sTraceFrames > 0   every node logs BEFORE it draws, flushed, so the last line in the log
+//                      is the node that wedged - and whether it wedged in its own slice art
+//                      or in a bound content callback.
+//   sDrawMax >= 0      draw only the first N nodes of the walk. That turns "which node" into
+//                      a live bisection the player can run from the console without a rebuild:
+//                      0 freezes nothing, raise it until the hang comes back.
+// ---------------------------------------------------------------------------------------
+static s32 sTraceFrames = 0;
+static s32 sDrawMax = -1;
+
+void So2h_UiTrace(const char* tag, s32 a, s32 b);
+
+void So2h_Ui_SetTraceFrames(s32 frames) {
+    sTraceFrames = frames;
+}
+
+void So2h_Ui_SetDrawMax(s32 max) {
+    sDrawMax = max;
+}
+
 void So2h_Ui_SetGfxBudget(Gfx* end) {
     sGfxBudgetEnd = end;
 }
@@ -806,9 +832,16 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
     So2hUiCtx* ctx = So2h_UiCtx();
     s32 layer;
     s32 scissored = 0;
+    s32 drawn = 0;
+    s32 trace = (sTraceFrames > 0);
 
     if (!ctx->initialised) {
         return gfx;
+    }
+
+    if (trace) {
+        So2h_UiTrace("tree.begin", ctx->descCount, sDrawMax);
+        sTraceFrames--;
     }
 
     // The pause pages render through a shrunken viewport, which leaves the scissor clipped to
@@ -843,8 +876,22 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
                 continue;
             }
 
+            // Live bisection stop. Counted in nodes actually drawn, not table index, so the
+            // number the player lands on is the same number this log prints.
+            if ((sDrawMax >= 0) && (drawn >= sDrawMax)) {
+                if (trace) {
+                    So2h_UiTrace("tree.limit", i, drawn);
+                }
+                return So2h_UiRestoreBlend(gfx);
+            }
+            drawn++;
+
             So2h_UiApplyReveal(d, n, &rect);
             So2h_UiApplyUnroll(d, n, &rect);
+
+            if (trace) {
+                So2h_UiTrace("node", i, (s32)d->style.sheet);
+            }
 
             if ((d->style.drawMode != SO2H_UI_DRAW_NONE) && (d->style.sheet != SO2H_UI_INVALID)) {
                 u8 cr = (d->style.r | d->style.g | d->style.b) ? d->style.r : 255;
@@ -858,6 +905,10 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
             // A runtime binding wins over the descriptor's own callback; see So2h_Ui_BindDraw.
             drawFn = (ctx->drawFn[i] != NULL) ? ctx->drawFn[i] : d->draw;
             drawArg = (ctx->drawFn[i] != NULL) ? ctx->drawArg[i] : NULL;
+
+            if (trace) {
+                So2h_UiTrace("node.art.done", i, drawn);
+            }
 
             if (drawFn != NULL) {
                 // A callback gets a hardware scissor because we cannot crop what it emits.
@@ -878,6 +929,10 @@ Gfx* So2h_UiDraw_Tree(Gfx* gfx) {
                 }
             }
         }
+    }
+
+    if (trace) {
+        So2h_UiTrace("tree.end", drawn, 0);
     }
 
     if (sOutlines) {

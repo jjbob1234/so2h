@@ -35,6 +35,9 @@ static s32 So2h_PauseMenu_DevForceOpen(void) {
     return CVarGetInteger("gSo2h.Ui.ForceOpen", 0);
 }
 
+// Defined in BenPort.cpp: logs and FLUSHES, because a hard hang never flushes on its own.
+void So2h_UiTrace(const char* tag, s32 a, s32 b);
+
 static void So2h_PauseMenu_ApplyDevState(void) {
     static s32 sLastReplay = 0;
     s32 replay;
@@ -42,6 +45,11 @@ static void So2h_PauseMenu_ApplyDevState(void) {
     So2h_Ui_SetShowHiddenPages(CVarGetInteger("gSo2h.Ui.ShowHiddenPages", 0));
     So2h_Ui_SetTimeScale(CVarGetFloat("gSo2h.Ui.TimeScale", 1.0f));
     So2h_Ui_SetOutlines(CVarGetInteger("gSo2h.Ui.Outlines", 0));
+
+    // Freeze bisection. -1 is "draw everything", which is the shipping behaviour; the hang
+    // hunt sets this to 0 and walks it up until the freeze returns. Read every frame on
+    // purpose, so it can be changed from the console between two pauses.
+    So2h_Ui_SetDrawMax(CVarGetInteger("gSo2h.Ui.DrawMax", -1));
 
     // Replay is a counter, not a flag: the dev menu bumps it and the entrance re-runs with a
     // fresh seed. A flag would need the UI to clear it again and would misfire on the frame
@@ -104,6 +112,12 @@ void So2h_PauseMenu_Update(s16 pauseState, s32 isOwlWarp) {
     }
 
     if (on && !sSo2hMenuWasOn) {
+        // Arm the trace on the OPEN edge, not from a plain flag: the hang happens on the first
+        // drawn frame of a pause, and a per-line-flushed log of every node is far too heavy to
+        // leave running. Three frames is enough to catch the first full walk plus the one
+        // before it, and it re-arms on every pause. Default 0 keeps it silent.
+        So2h_Ui_SetTraceFrames(CVarGetInteger("gSo2h.Ui.TraceFrames", 0));
+        So2h_UiTrace("menu.open", pauseState, 0);
         So2h_Ui_Open();
     } else if (!on && sSo2hMenuWasOn) {
         So2h_Ui_Close();
@@ -114,7 +128,12 @@ void So2h_PauseMenu_Update(s16 pauseState, s32 isOwlWarp) {
     // needs frames to finish it. So2h_Ui_CloseDone is the engine saying it is safe to stop.
     if (on || !So2h_Ui_CloseDone()) {
         So2h_PauseMenu_ApplyDevState();
-        So2h_Ui_Update();
+
+        // Halves the search: if the freeze survives with the update off, it is in the draw
+        // walk; if it disappears, it is in the layout / animation / nav pass.
+        if (!CVarGetInteger("gSo2h.Ui.NoUpdate", 0)) {
+            So2h_Ui_Update();
+        }
     }
 }
 
@@ -224,6 +243,11 @@ void So2h_PauseMenu_Draw(struct PlayState* playArg) {
     Gfx* gfx;
 
     if (!So2h_PauseMenu_IsActive()) {
+        return;
+    }
+    // The other half of the split: with the draw off the menu still solves, animates and
+    // navigates, it just paints nothing. Freeze here and the culprit is an emitter.
+    if (CVarGetInteger("gSo2h.Ui.NoDraw", 0)) {
         return;
     }
 

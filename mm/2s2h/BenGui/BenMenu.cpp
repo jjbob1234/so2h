@@ -2171,7 +2171,7 @@ void BenMenu::AddDevTools() {
         .Options(ButtonOptions().Tooltip("Enables the Message Viewer window for testing in-game messages."))
         .WindowName("Message Viewer");
 
-    // SO2H [Menu] so2h_ui dev hooks. All six are read by mm/2s2h/Menu/so2h_pause_menu.c (and
+    // SO2H [Menu] so2h_ui dev hooks. All eleven are read by mm/2s2h/Menu/so2h_pause_menu.c (and
     // so2h_ui_sfx.c for the mute), all default to off/neutral, and none of them are compiled
     // out at the call site - the defaults ARE the release behaviour.
     path = { "Dev Tools", "SO2H Menu", SECTION_COLUMN_1 };
@@ -2194,6 +2194,40 @@ void BenMenu::AddDevTools() {
         .Options(CheckboxOptions().Tooltip(
             "Silences the menu's own voice pool. The voices still allocate and run, so this mutes the sound "
             "without changing what the pool is doing."));
+    // SO2H [Menu] freeze diagnostics. Each one removes exactly one subsystem from the pause
+    // path so a hang can be attributed by elimination; all default to off.
+    AddWidget(path, "Skip Menu Draw", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSo2h.Ui.NoDraw")
+        .Options(CheckboxOptions().Tooltip(
+            "Diagnostic: makes So2h_PauseMenu_Draw return immediately. The menu still updates and animates, "
+            "but emits no geometry."));
+    AddWidget(path, "Skip Menu Update", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSo2h.Ui.NoUpdate")
+        .Options(CheckboxOptions().Tooltip(
+            "Diagnostic: skips So2h_Ui_Update, so the layout is solved once and never advanced. Freezes the "
+            "animation at frame 0."));
+    AddWidget(path, "Skip Menu SFX Mix", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSo2h.Ui.NoSfxMix")
+        .Options(CheckboxOptions().Tooltip(
+            "Diagnostic: makes the audio thread skip the menu voice pool entirely. Unlike Mute Menu SFX, this "
+            "also stops the pool from being read on the audio thread."));
+    AddWidget(path, "Trace Frames On Open: %d", WIDGET_CVAR_SLIDER_INT)
+        .CVar("gSo2h.Ui.TraceFrames")
+        .Options(IntSliderOptions()
+                     .Tooltip("Diagnostic: number of frames to log per-node draw progress after the menu opens. "
+                              "0 disables logging. Each line is flushed, so the last line in the log names the "
+                              "node that was being drawn when a hang started.")
+                     .Min(0)
+                     .Max(10)
+                     .DefaultValue(0));
+    AddWidget(path, "Draw Node Limit: %d", WIDGET_CVAR_SLIDER_INT)
+        .CVar("gSo2h.Ui.DrawMax")
+        .Options(IntSliderOptions()
+                     .Tooltip("Diagnostic: stop drawing after this many nodes. -1 draws everything. Bisect a "
+                              "hang by raising this until it reproduces.")
+                     .Min(-1)
+                     .Max(110)
+                     .DefaultValue(-1));
     AddWidget(path, "Animation Speed: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gSo2h.Ui.TimeScale")
         .Options(FloatSliderOptions()

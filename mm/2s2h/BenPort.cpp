@@ -961,6 +961,21 @@ static struct {
 // rather than pulling the menu header into the port layer.
 extern "C" void So2h_UiSfx_MixInto(int16_t* out, int32_t frames);
 
+// SO2H [Menu] diagnostic trace, FLUSHED on every line.
+//
+// The pause freeze is a hard hang: both the game thread and the audio thread stop (the game
+// thread waits on cv_from_thread every block, so whichever one wedges takes the other with it)
+// and the log ends mid-frame with no error. A buffered log line is worthless in that situation
+// because the tail never reaches the disk - so this flushes every time. It is only ever called
+// while a trace CVar is on and only for the first few frames of an open, so the cost does not
+// matter. The last SO2H_TRACE line in the log names the last thing that ran.
+extern "C" void So2h_UiTrace(const char* tag, int32_t a, int32_t b) {
+    SPDLOG_INFO("SO2H_TRACE {} a={} b={}", tag != nullptr ? tag : "(null)", a, b);
+    if (spdlog::default_logger() != nullptr) {
+        spdlog::default_logger()->flush();
+    }
+}
+
 void OTRAudio_Thread() {
     while (audio.running) {
         {

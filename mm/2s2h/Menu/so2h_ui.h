@@ -582,6 +582,20 @@ void So2h_Ui_SetTimeScale(f32 scale);
 // Draw a 1px box around every visible node's solved rect, over everything else.
 void So2h_Ui_SetOutlines(s32 on);
 
+// ---------------------------------------------------------------------------------------
+// Freeze diagnostics
+// ---------------------------------------------------------------------------------------
+// Log every node of the draw walk, flushed per line, for the next `frames` frames. Meant to
+// be armed at the moment the menu opens: a hard hang eats the buffered tail of the log, so
+// the only useful trace is one that has already hit the disk. The last line names the node
+// that wedged, and whether it wedged in its slice art or in a bound content callback.
+void So2h_Ui_SetTraceFrames(s32 frames);
+
+// Draw only the first `max` nodes of the walk; -1 draws everything. A live bisection for the
+// pause hang: set 0, confirm the freeze is gone, then raise until it returns. The number that
+// brings it back is the offending node, no rebuild required.
+void So2h_Ui_SetDrawMax(s32 max);
+
 void So2h_Ui_SetGfxBudget(Gfx* end);
 
 // The tail currently armed, so a bound draw callback emitting raw gfx++ of its own can

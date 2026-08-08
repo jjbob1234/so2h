@@ -277,6 +277,13 @@ void So2h_UiSfx_MixInto(s16* out, s32 frames) {
     if (!sBound || (out == NULL) || (frames <= 0)) {
         return;
     }
+    // Freeze diagnostics. The game thread waits on the audio thread every block (BenPort.cpp
+    // OTRAudio_Thread / cv_from_thread), so a wedge in here would look exactly like a graphics
+    // hang: picture frozen, audio dead, no log. This switch takes the whole pool out of the
+    // path so that possibility can be eliminated in one pause.
+    if (CVarGetInteger("gSo2h.Ui.NoSfxMix", 0)) {
+        return;
+    }
     if (frames > SO2H_UI_SFX_MAX_FRAMES) {
         frames = SO2H_UI_SFX_MAX_FRAMES; // cannot happen at 560*3, but never write past the end
     }
