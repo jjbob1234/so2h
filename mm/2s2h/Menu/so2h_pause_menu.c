@@ -69,6 +69,10 @@ void So2h_PauseMenu_Reset(void) {
         So2h_Ui_Reset();
     }
     sSo2hMenuWasOn = 0;
+    // Hard teardown, so the menu's own bus goes with it. Reset can land mid-close - before the
+    // per-node stops have all been emitted - and after it there is no frame left on which
+    // anything would notice a travel voice still looping.
+    So2h_UiSfx_StopAll();
 }
 
 /**
@@ -136,6 +140,12 @@ void So2h_PauseMenu_Update(s16 pauseState, s32 isOwlWarp) {
     // Keep updating through the exit: So2h_Ui_Close only *starts* the fall, and the engine
     // needs frames to finish it. So2h_Ui_CloseDone is the engine saying it is safe to stop.
     if (on || !So2h_Ui_CloseDone()) {
+        // Proof of life for the sfx watchdog, once per frame for exactly as long as the menu is
+        // on screen - including the close animation, which still wants its own sounds. The
+        // moment this stops (unpause, teardown, a close that never finishes) the audio thread
+        // releases the pool on its own. See SO2H_UI_SFX_IDLE_BLOCKS.
+        So2h_UiSfx_KeepAlive();
+
         So2h_PauseMenu_ApplyDevState();
 
         // Halves the search: if the freeze survives with the update off, it is in the draw

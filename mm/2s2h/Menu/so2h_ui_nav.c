@@ -51,9 +51,24 @@
 // side. Anything above about 2.0 makes diagonal layouts feel sticky.
 #define SO2H_UI_NAV_PERP_WEIGHT 2.0f
 
-// A candidate must clear the current rect by at least this much in the requested direction to
-// count as being "that way" at all. Keeps overlapping panels from focusing each other.
-#define SO2H_UI_NAV_MIN_TRAVEL 0.5f
+// A candidate must not meaningfully OVERLAP the current rect in the requested direction. This
+// is a small NEGATIVE slack, not a positive epsilon: the scene packs quest slots, song cells
+// and tool cells flush, sharing an edge exactly, so `to->x0 - from->x1` is nominally 0.0 for a
+// true neighbour. With this at 0.5f every one of those neighbours was rejected and the search
+// landed on the next-but-one cell instead - which is the "cursor moves two at a time" bug.
+// Measured with tools/, RIGHT from questSlot00 gave questSlot02 and from song00 gave song02.
+//
+// 0.0f is NOT sufficient. The rects come out of the constraint solver, not out of integer
+// arithmetic, so a shared edge is only zero to within float rounding. At 4:3 the song grid
+// measures song01 -> song02 as travel = -0.000000: a hair negative, rejected at 0.0f, and the
+// cursor still skipped one cell in that one row. -0.0625f (1/16, exact in binary, so it adds no
+// rounding of its own) absorbs that without letting anything real through.
+//
+// The slack stays far smaller than any genuine overlap, so the case this constant was added for
+// is unchanged: dropping the test entirely (-1e9) makes the big background panels (peepLeft,
+// pageLeft, songPageL) win every search and the cursor ping-pongs between two nodes forever.
+// Real overlaps here are tens of units, three orders of magnitude past the slack.
+#define SO2H_UI_NAV_MIN_TRAVEL -0.0625f
 
 static f32 So2h_UiNavAbs(f32 v) {
     return (v < 0.0f) ? -v : v;

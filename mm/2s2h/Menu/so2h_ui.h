@@ -366,6 +366,15 @@ typedef struct So2hUiStyle {
 #define SO2H_UI_SFX_ATTACK_F 64  // ~2 ms
 #define SO2H_UI_SFX_RELEASE_F 128 // ~4 ms
 
+// Audio-thread watchdog, in audio blocks. The game thread proves the menu is still on screen
+// once per frame (So2h_UiSfx_KeepAlive); after this many blocks with no proof the pool releases
+// everything it is holding. This is what makes a stuck loop impossible rather than unlikely: an
+// unpause does not call into the menu at all, so nothing on the game thread is left to notice
+// that a looping travel voice was never stopped - and every subsequent open stacked another one.
+// One block is roughly one frame, so ~24 is a fifth of a second: long enough that a hitch or a
+// slow frame during a pause cannot cut the clatter off, short enough to be inaudible as a leak.
+#define SO2H_UI_SFX_IDLE_BLOCKS 24
+
 /**
  * Bind the two custom samples. Safe to call every frame - it does nothing once bound, and
  * quietly gives up (leaving the menu silent) if the resources have not finished decoding yet.
@@ -376,6 +385,21 @@ void So2h_UiSfx_Bind(void);
 void So2h_UiSfx_Slide(s32 nodeId, u32 seed);
 void So2h_UiSfx_SlideStop(s32 nodeId);
 void So2h_UiSfx_Placed(s32 nodeId, u32 seed);
+
+/**
+ * Release EVERY voice the menu is holding, looping or one-shot, over the normal release ramp.
+ * Called on the close edge so the menu going away always silences its own bus, whether or not
+ * the close animation ever reached the frame that would have stopped each travel voice.
+ */
+void So2h_UiSfx_StopAll(void);
+
+/**
+ * "The menu is still on screen." Call once per frame from the game thread for as long as the
+ * menu is up. The audio thread watches for it and releases the whole pool after
+ * SO2H_UI_SFX_IDLE_BLOCKS blocks without it, which is the backstop for a close path that never
+ * completes. GAME THREAD ONLY.
+ */
+void So2h_UiSfx_KeepAlive(void);
 
 /**
  * Mix the menu's own voices into an already-filled interleaved stereo s16 block.

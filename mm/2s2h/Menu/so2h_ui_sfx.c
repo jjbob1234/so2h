@@ -88,8 +88,9 @@ static volatile u8 sBound = false;
 // Command ring (game thread -> audio thread)
 // ---------------------------------------------------------------------------------------
 
-#define SO2H_UI_SFX_CMD_START 0 // begin a voice: clip, pitch, looping or not
-#define SO2H_UI_SFX_CMD_STOP 1  // release the looping voice belonging to one node
+#define SO2H_UI_SFX_CMD_START 0    // begin a voice: clip, pitch, looping or not
+#define SO2H_UI_SFX_CMD_STOP 1     // release the looping voice belonging to one node
+#define SO2H_UI_SFX_CMD_STOP_ALL 2 // release every voice, whoever owns it
 
 typedef struct So2hUiSfxCmd {
     u8 op;
@@ -101,6 +102,24 @@ typedef struct So2hUiSfxCmd {
 static So2hUiSfxCmd sCmd[SO2H_UI_SFX_CMDS];
 static volatile u32 sCmdWrite = 0; // only the game thread advances this
 static volatile u32 sCmdRead = 0;  // only the audio thread advances this
+
+// ---------------------------------------------------------------------------------------
+// Liveness gate (game thread -> audio thread)
+// ---------------------------------------------------------------------------------------
+// sAlive is bumped by the game thread once per frame while the menu is up and only ever READ
+// by the audio thread; sAliveSeen / sIdleBlocks are touched only by the audio thread. Nothing
+// is written from both sides, so the whole watchdog needs no synchronisation at all.
+//
+// This exists because the close path is not a reliable place to silence the bus. So2h_Ui_Close
+// only *starts* the fall, the per-node stops are emitted as each node settles, and if the menu
+// is torn down before that finishes - or the game simply unpauses, after which nothing on the
+// game thread runs at all - the looping travel voices are never stopped. They then keep playing
+// under gameplay and the next open stacks another set on top. A timeout on the consumer side
+// cannot be defeated by any of that.
+
+static volatile u32 sAlive = 0;
+static u32 sAliveSeen = 0;
+static s32 sIdleBlocks = 0;
 
 static void So2h_UiSfx_Push(u8 op, u8 clip, s16 node, f32 pitch) {
     u32 w = sCmdWrite;
@@ -170,14 +189,32 @@ static So2hUiSfxVoice* So2h_UiSfx_Alloc(void) {
     return &sVoice[quietest];
 }
 
-static void So2h_UiSfx_Drain(void) {
+/**
+ * Put every active voice into its release ramp. Ramped rather than cut: a loop stopped dead
+ * always clicks, and this runs while gameplay audio is playing underneath it.
+ */
+static void So2h_UiSfx_ReleaseAll(void) {
+    s32 i;
+
+    for (i = 0; i < SO2H_UI_SFX_VOICES; i++) {
+        if (sVoice[i].active && (sVoice[i].env != SO2H_UI_SFX_ENV_RELEASE)) {
+            sVoice[i].env = SO2H_UI_SFX_ENV_RELEASE;
+            sVoice[i].envStep = 1.0f / (f32)SO2H_UI_SFX_RELEASE_F;
+        }
+    }
+}
+
+static void So2h_UiSfx_Drain(s32 gated) {
     while (sCmdRead != sCmdWrite) {
         const So2hUiSfxCmd* c = &sCmd[sCmdRead & (SO2H_UI_SFX_CMDS - 1)];
 
         if (c->op == SO2H_UI_SFX_CMD_START) {
             const So2hUiSfxClip* clip = &sClip[c->clip];
 
-            if ((clip->pcm != NULL) && (clip->frames > 1)) {
+            // A START that arrives while the pool is gated off is stale by definition - it was
+            // queued by a menu that is already gone. Starting it would put a fresh loop into a
+            // pool nobody is left to stop.
+            if ((clip->pcm != NULL) && (clip->frames > 1) && !gated) {
                 So2hUiSfxVoice* v = So2h_UiSfx_Alloc();
 
                 v->active = true;
@@ -192,6 +229,8 @@ static void So2h_UiSfx_Drain(void) {
                 v->envGain = 0.0f;
                 v->envStep = 1.0f / (f32)SO2H_UI_SFX_ATTACK_F;
             }
+        } else if (c->op == SO2H_UI_SFX_CMD_STOP_ALL) {
+            So2h_UiSfx_ReleaseAll();
         } else {
             s32 i;
 
@@ -273,6 +312,7 @@ void So2h_UiSfx_MixInto(s16* out, s32 frames) {
     f32 vol;
     s32 i;
     s32 any = false;
+    s32 gated;
 
     if (!sBound || (out == NULL) || (frames <= 0)) {
         return;
@@ -288,7 +328,25 @@ void So2h_UiSfx_MixInto(s16* out, s32 frames) {
         frames = SO2H_UI_SFX_MAX_FRAMES; // cannot happen at 560*3, but never write past the end
     }
 
-    So2h_UiSfx_Drain();
+    // Liveness first, so a drain on a dead menu cannot start anything. Reading sAlive once and
+    // comparing against the last value seen means a game thread that has stopped bumping it -
+    // unpaused, stalled, or torn down mid-close - counts as idle without any handshake.
+    {
+        u32 alive = sAlive;
+
+        if (alive != sAliveSeen) {
+            sAliveSeen = alive;
+            sIdleBlocks = 0;
+        } else if (sIdleBlocks < SO2H_UI_SFX_IDLE_BLOCKS) {
+            sIdleBlocks++;
+        }
+    }
+    gated = (sIdleBlocks >= SO2H_UI_SFX_IDLE_BLOCKS);
+
+    So2h_UiSfx_Drain(gated);
+    if (gated) {
+        So2h_UiSfx_ReleaseAll();
+    }
 
     for (i = 0; i < SO2H_UI_SFX_VOICES; i++) {
         if (sVoice[i].active) {
@@ -483,6 +541,19 @@ void So2h_UiSfx_Placed(s32 nodeId, u32 seed) {
                     So2h_UiSfx_Pitch(nodeId, seed ^ 0xA5A5A5A5u, SO2H_UI_SFX_PLACED_PITCH));
 }
 
+void So2h_UiSfx_StopAll(void) {
+    if (!sBound) {
+        return;
+    }
+    So2h_UiSfx_Push(SO2H_UI_SFX_CMD_STOP_ALL, SO2H_UI_SFX_CLIP_SLIDE, -1, 1.0f);
+}
+
+void So2h_UiSfx_KeepAlive(void) {
+    // Plain increment: the game thread is the only writer and the audio thread only ever
+    // compares it for inequality, so a torn read is harmless - it reads as "still alive".
+    sAlive++;
+}
+
 #else
 
 void So2h_UiSfx_Bind(void) {
@@ -497,6 +568,10 @@ void So2h_UiSfx_SlideStop(s32 nodeId) {
 void So2h_UiSfx_Placed(s32 nodeId, u32 seed) {
     (void)nodeId;
     (void)seed;
+}
+void So2h_UiSfx_StopAll(void) {
+}
+void So2h_UiSfx_KeepAlive(void) {
 }
 void So2h_UiSfx_MixInto(s16* out, s32 frames) {
     (void)out;
