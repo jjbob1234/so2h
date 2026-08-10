@@ -519,6 +519,15 @@ static const ALIGN_ASSET(2) char gSo2hNoteLockedTex[] = dgSo2hNoteLocked;
 #define dgSo2hNoteWhite "__OTR__textures/so2h_menu/gSo2hNoteWhite"
 static const ALIGN_ASSET(2) char gSo2hNoteWhiteTex[] = dgSo2hNoteWhite;
 
+#define dgSo2hLogo "__OTR__textures/so2h_menu/gSo2hLogo"
+static const ALIGN_ASSET(2) char gSo2hLogoTex[] = dgSo2hLogo;
+
+#define dgSo2hLogoHD "__OTR__textures/so2h_menu/gSo2hLogoHD"
+static const ALIGN_ASSET(2) char gSo2hLogoHDTex[] = dgSo2hLogoHD;
+
+#define dgSo2hQuestDisplay "__OTR__textures/so2h_menu/gSo2hQuestDisplay"
+static const ALIGN_ASSET(2) char gSo2hQuestDisplayTex[] = dgSo2hQuestDisplay;
+
 #define dgSo2hRoundTile "__OTR__textures/so2h_menu/gSo2hRoundTile"
 static const ALIGN_ASSET(2) char gSo2hRoundTileTex[] = dgSo2hRoundTile;
 

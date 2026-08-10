@@ -4,6 +4,8 @@
 #include <array>
 #include <string>
 
+#include <spdlog/spdlog.h>
+
 // Source of truth for the relative paths below:
 //   env/soh/soh/assets/textures/icon_item_static/icon_item_static.h  (icons, 32x32 RGBA32)
 //   env/soh/soh/assets/textures/item_name_static/item_name_static.h  (ENG names, 128x16 IA4)
@@ -193,7 +195,8 @@ extern "C" const char* OotItemIcons_GetEquipNamePath(unsigned char equipType, un
 // Sources:
 //   env/soh/soh/assets/textures/icon_item_24_static/icon_item_24_static.h  (24x24 RGBA32)
 //   env/soh/soh/assets/textures/icon_item_static/icon_item_static.h        (80x32 IA8 tiles,
-//     drawn by soh at z_kaleido_scope_PAL.c:1399/1412 as the quest page background)
+//     drawn by soh at z_kaleido_scope_PAL.c:1399/1412 as the quest page background. The name
+//     digits are <column><row>, not <row><column> - see OotItemIcons.h.)
 // Order must match the OotQuestArtId enum exactly.
 namespace {
 
@@ -213,14 +216,20 @@ const char* const kOotQuestArt[OOT_QUEST_ART_MAX] = {
     /* 11 GOLD_SKULLTULA   */ "textures/icon_item_24_static/gQuestIconGoldSkulltulaTex",
     /* 12 HEART_CONTAINER  */ "textures/icon_item_24_static/gQuestIconHeartContainerTex",
     /* 13 HEART_PIECE      */ "textures/icon_item_24_static/gQuestIconHeartPieceTex",
-    /* 14 HEX_TILE_03      */ "textures/icon_item_static/gPauseQuestStatus03Tex",
-    /* 15 HEX_TILE_04      */ "textures/icon_item_static/gPauseQuestStatus04Tex",
-    /* 16 HEX_TILE_13      */ "textures/icon_item_static/gPauseQuestStatus13Tex",
-    /* 17 HEX_TILE_14      */ "textures/icon_item_static/gPauseQuestStatus14Tex",
-    /* 18 HEX_TILE_23      */ "textures/icon_item_static/gPauseQuestStatus23Tex",
-    /* 19 HEX_TILE_24      */ "textures/icon_item_static/gPauseQuestStatus24Tex",
+    /* 14 HEX_TILE_10      */ "textures/icon_item_static/gPauseQuestStatus10Tex",
+    /* 15 HEX_TILE_20      */ "textures/icon_item_static/gPauseQuestStatus20Tex",
+    /* 16 HEX_TILE_11      */ "textures/icon_item_static/gPauseQuestStatus11Tex",
+    /* 17 HEX_TILE_21      */ "textures/icon_item_static/gPauseQuestStatus21Tex",
+    /* 18 HEX_TILE_12      */ "textures/icon_item_static/gPauseQuestStatus12Tex",
+    /* 19 HEX_TILE_22      */ "textures/icon_item_static/gPauseQuestStatus22Tex",
+    /* 20 HEX_TILE_13      */ "textures/icon_item_static/gPauseQuestStatus13Tex",
+    /* 21 HEX_TILE_23      */ "textures/icon_item_static/gPauseQuestStatus23Tex",
+    /* 22 HEX_TILE_10_ENG  */ "textures/icon_item_static/gPauseQuestStatus10ENGTex",
 };
 // clang-format on
+
+static_assert(sizeof(kOotQuestArt) / sizeof(kOotQuestArt[0]) == OOT_QUEST_ART_MAX,
+              "kOotQuestArt[] must have exactly one entry per OotQuestArtId");
 
 } // namespace
 
@@ -231,4 +240,34 @@ extern "C" const char* OotQuestArt_GetPath(int artId) {
     static std::array<std::string, OOT_QUEST_ART_MAX> sCache;
     static std::array<unsigned char, OOT_QUEST_ART_MAX> sState{};
     return ResolveChecked(kOotQuestArt[artId], sCache[artId], sState[artId]);
+}
+
+// ---------------------------------------------------------------------------------------
+// Diagnostic. Blank quest slots look identical whether the layout is wrong or the art is simply
+// not in the merged o2r (OotQuestArt_GetPath returns nullptr and the bar falls back to an empty
+// recess). This prints the verdict for every id, once per run.
+extern "C" void OotQuestArt_LogAudit(void) {
+    static bool sDone = false;
+    if (sDone) {
+        return;
+    }
+    sDone = true;
+
+    if (!OotAssets::IsOotContentAvailable()) {
+        SPDLOG_WARN("[SO2H][QuestArt] OOT content is NOT available - every quest icon will be blank.");
+        return;
+    }
+
+    int missing = 0;
+    for (int i = 0; i < OOT_QUEST_ART_MAX; i++) {
+        const char* rel = kOotQuestArt[i];
+        std::string resolved = (rel != nullptr) ? OotAssets::ResolveOotPath(rel) : std::string("<null>");
+        bool present = (rel != nullptr) && OotAssets::OotFileExists(resolved);
+        if (!present) {
+            missing++;
+        }
+        SPDLOG_INFO("[SO2H][QuestArt] {:2d} {:<8} {}", i, present ? "PRESENT" : "MISSING", resolved);
+    }
+    SPDLOG_INFO("[SO2H][QuestArt] {} of {} entries missing from the merged archive.", missing,
+                (int)OOT_QUEST_ART_MAX);
 }

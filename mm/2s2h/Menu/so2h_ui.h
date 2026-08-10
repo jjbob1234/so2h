@@ -307,6 +307,15 @@ typedef struct So2hUiStyle {
 // conserves area but turns a wide window into a noodle, which reads as a bug, not as speed.
 #define SO2H_UI_CLOSE_PINCH 0.30f
 
+/* Playback rate of the whole close timeline. 1.0f is the authored speed; 5.0f runs it at 500%.
+ * The close animation is a beat the player never watches twice - they have already decided to
+ * leave - so it is scaled rather than re-authored: every constant above stays in authored
+ * frames and the advance step multiplies elapsed real frames into authored time. Because the
+ * fall is quadratic in time, scaling time (not gravity) keeps the arc shape identical and only
+ * shortens it; the per-node jitter desync shrinks by the same factor, which is what we want -
+ * at 5x a 4-frame stagger would otherwise be 20 authored frames of dribble. */
+#define SO2H_UI_CLOSE_SPEED 5.0f
+
 // ---------------------------------------------------------------------------------------
 // THE SOUND OF THE PERFORMANCE. One voice per animated node, deliberately overloaded: every
 // window that travels gets its own slide voice and its own landing thud, at its own pitch,

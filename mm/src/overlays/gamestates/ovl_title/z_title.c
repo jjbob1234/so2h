@@ -18,11 +18,65 @@
 #include <stdlib.h>
 #include <libultraship/bridge/consolevariablebridge.h>
 
-#define dgShipLogoDL "__OTR__misc/nintendo_rogo_static/gShipLogoDL"
-static const ALIGN_ASSET(2) char gShipLogoDL[] = dgShipLogoDL;
+#include "assets/2s2h_assets.h"
 
-#define dgLUSLogoTextTex "__OTR__misc/nintendo_rogo_static/gLUSLogoTextTex"
-static const ALIGN_ASSET(2) char gLUSLogoTextTex[] = dgLUSLogoTextTex;
+// #region SO2H [Boot logo]
+// The non-authentic boot logo is Jay's SHIPYARD 64 plate, drawn as a single RGBA32 rectangle
+// instead of the spinning 3D N64/Ship model and its 16-strip scrolling text. The old
+// gShipLogoDL / gLUSLogoTextTex defines are gone with the code that used them - leaving an
+// unused static behind is an MSVC hard error, not a warning.
+//
+// gSo2hLogoHDTex is 944x768 RGBA32. That is far past anything N64 TMEM could hold and is
+// deliberate: this runs on PC through LUS/Fast3D, which uploads the whole texture, so the
+// plate is drawn at 4x the logical resolution of the rect it fills and stays crisp at any
+// window size. gSo2hLogoTex is the same art at 236x192 and is packed but unused, kept for a
+// future small-scale placement (title screen corner / file select).
+//
+// Placement is derived, never baked: the rect is a fraction of the visible screen and is
+// centred between the real extended edges, so it lands in the middle at 4:3 and at any
+// widescreen aspect rather than inheriting the vanilla text's off-centre x = 97.
+
+#define SO2H_BOOT_LOGO_W 944
+#define SO2H_BOOT_LOGO_H 768
+// Width as a fraction of the 320-unit logical screen. 0.72 puts the plate a comfortable
+// margin inside a 4:3 frame; the height follows from the art's own aspect so it never shears.
+#define SO2H_BOOT_LOGO_SCREEN_FRAC 0.72f
+
+static void So2h_DrawBootLogo(ConsoleLogoState* this) {
+    f32 left = (f32)OTRGetRectDimensionFromLeftEdge(0);
+    f32 right = (f32)OTRGetRectDimensionFromRightEdge(SCREEN_WIDTH);
+    f32 w = SCREEN_WIDTH * SO2H_BOOT_LOGO_SCREEN_FRAC;
+    f32 h = w * ((f32)SO2H_BOOT_LOGO_H / (f32)SO2H_BOOT_LOGO_W);
+    s16 x0 = (s16)(((left + right) * 0.5f) - (w * 0.5f));
+    s16 y0 = (s16)((SCREEN_HEIGHT * 0.5f) - (h * 0.5f));
+    s16 rectW = (s16)w;
+    s16 rectH = (s16)h;
+
+    OPEN_DISPS(this->state.gfxCtx);
+
+    Gfx_SetupDL39_Opa(this->state.gfxCtx);
+
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetCycleType(POLY_OPA_DISP++, G_CYC_1CYCLE);
+    gDPSetRenderMode(POLY_OPA_DISP++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    // The plate carries its own colour and its own alpha, so prim is a neutral pass-through
+    // that exists only as a fade handle if this ever needs to dissolve independently of
+    // Environment_FillScreen.
+    gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, 255);
+
+    gDPLoadTextureBlock(POLY_OPA_DISP++, gSo2hLogoHDTex, G_IM_FMT_RGBA, G_IM_SIZ_32b, SO2H_BOOT_LOGO_W,
+                        SO2H_BOOT_LOGO_H, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK,
+                        G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+    gSPWideTextureRectangle(POLY_OPA_DISP++, x0 << 2, y0 << 2, (x0 + rectW) << 2, (y0 + rectH) << 2, G_TX_RENDERTILE,
+                            0, 0, (u16)(((u32)SO2H_BOOT_LOGO_W << 10) / (u32)rectW),
+                            (u16)(((u32)SO2H_BOOT_LOGO_H << 10) / (u32)rectH));
+
+    gDPPipeSync(POLY_OPA_DISP++);
+
+    CLOSE_DISPS(this->state.gfxCtx);
+}
+// #endregion
 
 const char* GetGameVersionString() {
     uint32_t gameVersion = ResourceMgr_GetGameVersion(0);
@@ -125,13 +179,22 @@ void ConsoleLogo_Draw(GameState* thisx) {
     Vec3f eye;
     s32 pad[2];
 
-    char* logoDL = gNintendo64LogoNDL;
     char* logoText = gNintendo64LogoTextTex;
 
+    // #region SO2H [Boot logo] The SHIPYARD 64 plate replaces the whole vanilla logo draw -
+    // model, shine and scrolling text - so this returns rather than falling through.
     if (!CVarGetInteger("gEnhancements.Graphics.AuthenticLogo", 0)) {
-        logoDL = gShipLogoDL;
-        logoText = gLUSLogoTextTex;
+        So2h_DrawBootLogo(this);
+        ConsoleLogo_PrintBuildInfo(this);
+
+        OPEN_DISPS(this->state.gfxCtx);
+        Environment_FillScreen(this->state.gfxCtx, 0, 0, 0, this->coverAlpha, FILL_SCREEN_XLU);
+        CLOSE_DISPS(this->state.gfxCtx);
+
+        sTitleRotation += 300;
+        return;
     }
+    // #endregion
 
     OPEN_DISPS(this->state.gfxCtx);
 
@@ -183,10 +246,6 @@ void ConsoleLogo_Draw(GameState* thisx) {
         gDPSetTileSize(POLY_OPA_DISP++, 1, this->uls, (this->ult & 0x7F) - idx * 4, 0, 0);
         gSPTextureRectangle(POLY_OPA_DISP++, 97 << 2, y << 2, (97 + 192) << 2, (y + 2) << 2, G_TX_RENDERTILE, 0, 0,
                             1 << 10, 1 << 10);
-    }
-
-    if (!CVarGetInteger("gEnhancements.Graphics.AuthenticLogo", 0)) {
-        ConsoleLogo_PrintBuildInfo(this);
     }
 
     Environment_FillScreen(this->state.gfxCtx, 0, 0, 0, this->coverAlpha, FILL_SCREEN_XLU);

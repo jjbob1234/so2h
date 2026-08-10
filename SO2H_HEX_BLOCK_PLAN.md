@@ -115,13 +115,18 @@ Normalised into the 2x4 block rect (x -40..120, y 80..-48), with
 | 0 | Forest | 0.7875 | 0.421875 |
 | 1 | Fire   | 0.7875 | 0.671875 |
 | 2 | Water  | 0.6125 | 0.812500 |
-| 3 | Spirit | 0.3375 | 0.671875 |
-| 4 | Shadow | 0.3375 | 0.421875 |
+| 3 | Spirit | 0.4375 | 0.671875 |
+| 4 | Shadow | 0.4375 | 0.421875 |
 | 5 | Light  | 0.6125 | 0.281250 |
 
 Icon size 24 -> `0.15` of block width, `0.1875` of block height.
-Hexagon centre lands at `u 0.5625, v 0.546875` — deliberately off-centre, that is genuine
-OoT geometry, do not "fix" it to 0.5/0.5.
+Hexagon centre lands at `u 0.6125, v 0.546875` — deliberately right of the block centre, that
+is genuine OoT geometry (the hexagon lives on the right of the quest page), do not "fix" it to
+0.5. The vertex ring is 56 x 68 page units centre-to-centre, i.e. TALLER than wide.
+
+CORRECTION 2026-08-10: an earlier revision of this table had Spirit/Shadow at `u 0.3375` and
+the centre at `u 0.5625`. Both were arithmetic slips (`u = (x + 40) / 160`, x = 30 -> 0.4375)
+and made the hexagon 29% too wide. Verified against an in-game capture.
 
 Implementation: replace `sMedallionAngles[6]` polar placement with a UV table
 
@@ -132,8 +137,8 @@ static const f32 sMedallionUV[6][2] = {
     { 0.7875f, 0.421875f }, // Forest
     { 0.7875f, 0.671875f }, // Fire
     { 0.6125f, 0.812500f }, // Water
-    { 0.3375f, 0.671875f }, // Spirit
-    { 0.3375f, 0.421875f }, // Shadow
+    { 0.4375f, 0.671875f }, // Spirit
+    { 0.4375f, 0.421875f }, // Shadow
     { 0.6125f, 0.281250f }, // Light
 };
 #define MEDALLION_U_FRAC 0.15f
@@ -149,9 +154,9 @@ The `gSo2hRoundTile` disc backing stays under each medallion, sized to the icon 
 ## 5. Boss remains (MM's 4) — inner diamond, unchanged arrangement
 
 Radial as today (`sRemainsAngles[4] = {135,45,315,225}`), but centred on the **hex block
-centre** (`u 0.5625, v 0.546875` of the block) instead of the window centre, at
-`0.42 *` the medallion ring radius so they sit inside the hexagon and can never touch a
-vertex. Keeps the Odolwa/Goht/Gyorg/Twinmold order.
+centre** (`u 0.6125, v 0.546875` of the block) instead of the window centre, at
+`0.42 *` the medallion ring radius (measured per axis, so the inner ring inherits the
+hexagon's tall proportion) so they sit inside the hexagon and can never touch a vertex. Keeps the Odolwa/Goht/Gyorg/Twinmold order.
 
 ## 6. Verification before commit
 * `sHexTileArt` count == 8 and every id `< OOT_QUEST_ART_MAX`.

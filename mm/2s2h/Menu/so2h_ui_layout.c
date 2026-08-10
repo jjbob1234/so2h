@@ -988,37 +988,54 @@ static void So2h_UiAdvanceClose(So2hUiCtx* ctx) {
 
     for (i = 0; i < ctx->descCount; i++) {
         So2hUiNode* n = &ctx->node[i];
-        s32 f;
+        f32 f;
+        f32 prev;
 
         if (n->closeF < 0) {
             continue;
         }
-        n->closeF++;
-        f = n->closeF - So2h_UiCloseDelay(ctx, i);
-        if (f <= 0) {
+        // Saturate rather than wrap: closeF is s16 and keeps counting for as long as the menu
+        // is in the closing state, which is not bounded by anything above us.
+        if (n->closeF < 0x4000) {
+            n->closeF++;
+        }
+        // Authored time, not real frames: SO2H_UI_CLOSE_SPEED frames of the authored timeline
+        // elapse per update. prev is where this node was last frame, which is how the two
+        // one-shot sound beats below stay one-shot once a single step can skip over them.
+        f = ((f32)n->closeF * SO2H_UI_CLOSE_SPEED) - (f32)So2h_UiCloseDelay(ctx, i);
+        prev = f - SO2H_UI_CLOSE_SPEED;
+        if (f <= 0.0f) {
             continue;
         }
-        if (f <= SO2H_UI_CLOSE_RISE_F) {
+        if (f <= (f32)SO2H_UI_CLOSE_RISE_F) {
             // Build-up: rise, eased OUT, so it reads as being pulled up short.
-            f32 u = So2h_Ui_SmoothStep((f32)f / (f32)SO2H_UI_CLOSE_RISE_F);
+            f32 u = So2h_Ui_SmoothStep(f / (f32)SO2H_UI_CLOSE_RISE_F);
 
             // Same two audible beats as the entrance, reused: the node picks itself up, then
             // lets go. The "placed" thud lands on the release, which is the accent you feel.
-            if (f == 1) {
+            if (prev <= 0.0f) {
                 So2h_UiSfx_Slide(i, ctx->openSeed ^ 0x5BF03635u);
-            } else if (f == SO2H_UI_CLOSE_RISE_F) {
-                So2h_UiSfx_SlideStop(i);
-                So2h_UiSfx_Placed(i, ctx->openSeed ^ 0x5BF03635u);
             }
             So2h_UiMoveSubtree(ctx, i, 0.0f, -SO2H_UI_CLOSE_RISE_U * u);
         } else {
-            f32 g = (f32)(f - SO2H_UI_CLOSE_RISE_F);
+            f32 g = f - (f32)SO2H_UI_CLOSE_RISE_F;
             f32 dy = -SO2H_UI_CLOSE_RISE_U + (0.5f * SO2H_UI_CLOSE_GRAVITY * g * g);
             f32 v = SO2H_UI_CLOSE_GRAVITY * g;
             f32 sy = 1.0f + ((v * 0.03f < SO2H_UI_CLOSE_SQUASH) ? (v * 0.03f) : SO2H_UI_CLOSE_SQUASH);
             f32 sx = 1.0f / (1.0f + (SO2H_UI_CLOSE_PINCH * (sy - 1.0f)));
             f32 cx = (n->rect.x0 + n->rect.x1) * 0.5f;
             f32 cy = (n->rect.y0 + n->rect.y1) * 0.5f;
+
+            // Release edge. At speed 1 this is the old f == RISE_F frame; at higher speeds it is
+            // the first frame that crossed it, so the accent still fires exactly once. A step big
+            // enough to skip the whole build-up still gets its slide, so the pair stays balanced.
+            if (prev <= (f32)SO2H_UI_CLOSE_RISE_F) {
+                if (prev <= 0.0f) {
+                    So2h_UiSfx_Slide(i, ctx->openSeed ^ 0x5BF03635u);
+                }
+                So2h_UiSfx_SlideStop(i);
+                So2h_UiSfx_Placed(i, ctx->openSeed ^ 0x5BF03635u);
+            }
 
             So2h_UiStretchSubtree(ctx, i, sx, sy, cx, cy);
             So2h_UiMoveSubtree(ctx, i, 0.0f, dy);
@@ -1074,7 +1091,8 @@ s32 So2h_Ui_CloseDone(void) {
         if (!n->visible) {
             continue;
         }
-        g = (f32)(n->closeF - So2h_UiCloseDelay(ctx, i) - SO2H_UI_CLOSE_RISE_F);
+        g = ((f32)n->closeF * SO2H_UI_CLOSE_SPEED) - (f32)So2h_UiCloseDelay(ctx, i) -
+             (f32)SO2H_UI_CLOSE_RISE_F;
         if (g < 0.0f) {
             return 0;
         }

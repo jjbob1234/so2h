@@ -235,24 +235,93 @@ static TexturePtr sOcarinaButtonGlyphs[5] = {
 // Art lookup tables
 // ---------------------------------------------------------------------------------------
 
-// OOT art ids for the six medallions and three spiritual stones, in ring order.
+// OOT art ids for the six medallions, in OOT's own quest-slot order.
+static u8 sMedallionArt[6] = {
+    OOT_QUEST_ART_MEDALLION_FOREST, OOT_QUEST_ART_MEDALLION_FIRE,   OOT_QUEST_ART_MEDALLION_WATER,
+    OOT_QUEST_ART_MEDALLION_SPIRIT, OOT_QUEST_ART_MEDALLION_SHADOW, OOT_QUEST_ART_MEDALLION_LIGHT,
+};
 
+// OOT art ids for the three spiritual stones, in OOT's own order.
 static u8 sStoneArt[3] = {
     OOT_QUEST_ART_STONE_KOKIRI,
     OOT_QUEST_ART_STONE_GORON,
     OOT_QUEST_ART_STONE_ZORA,
 };
-// The 2x3 hexagon block, in row-major order (top-left, top-right, mid-left, ...).
 
-// Ring angles, degrees, screen-space (y grows downward so the sine is subtracted). The
-// medallions sit on the hexagon's six vertices starting at the top and running clockwise in
-// OOT's own order; the four boss remains sit on a concentric inner ring, offset 45 degrees so
-// they land in the hexagon's gaps and can never collide with a medallion.
+// ---------------------------------------------------------------------------------------
+// The quest display plate
+//
+// Authored art: mm/assets/custom/textures/so2h_menu/gSo2hQuestDisplay.rgba32.png, 223x256
+// RGBA32, three overlapping isometric hexagonal plates with thirteen moulded sockets:
+//
+//   top-left plate     4 sockets in a diamond   MM's boss remains
+//   bottom-right plate 6 sockets in a hexagon   OOT's medallions (triforce relief in the middle)
+//   bottom-left plate  3 sockets in a triangle  OOT's spiritual stones
+//
+// This REPLACES the lifted OOT hexagon line-art block (gPauseQuestStatus tiles 10/20/11/21/
+// 12/22/13/23) that this readout used to assemble. Those tile ids and their UV solve are kept
+// in OotItemIcons.* and SO2H_HEX_BLOCK_PLAN.md as the record, but nothing draws them now.
+//
+// Socket centres below were measured off the art itself - band-pass + disc matched filter,
+// sub-pixel centroid, then visually confirmed against a 4x overlay - and are stored in the
+// art's own pixel space. They are divided by the texture dims at draw time, so re-authoring
+// the plate at a different resolution only needs these numbers rescaled, and nothing else in
+// this file moves. The left-most stone socket is clipped by the texture edge in the source
+// art; that is known and accepted.
+// ---------------------------------------------------------------------------------------
 
- // Odolwa, Goht, Gyorg, Twinmold
+#define QUEST_DISPLAY_TEX_W 223
+#define QUEST_DISPLAY_TEX_H 256
+
+// Socket diameter in the art's pixel space. The moulded sockets measure ~22 px across; the
+// icon is set marginally wider so it fills the socket rather than floating in it. The closest
+// pair of sockets anywhere on the plate is ~40 px apart (the bottom mask to the top stone), so
+// nothing here can collide at any window size.
+/*
+ * Horizontal seat of the plate inside its window. 0.0f = flush left, 0.5f = centred,
+ * 1.0f = flush right. The plate is narrower than the window at both aspects (74.0 units
+ * of plate in 110.1 units of window at 16:9), so this decides where the ~36 units of
+ * slack goes. Jay asked for the plate to sit right of centre without changing its size,
+ * so this seats it most of the way over while leaving a hair of margin off the frame.
+ * Vertical stays centred - the plate is height-limited, so there is no vertical slack.
+ */
+#define QUEST_DISPLAY_ALIGN_X 0.85f
+
+#define QUEST_DISPLAY_SOCKET_W 24.0f
+#define QUEST_DISPLAY_SOCKET_H 22.0f
+
+// MM's four boss remains, clockwise from the top of the diamond: Odolwa, Goht, Gyorg, Twinmold.
+static const f32 sRemainsSocket[4][2] = {
+    { 81.12f, 36.05f },  // Odolwa   top
+    { 127.03f, 62.11f }, // Goht     right
+    { 81.09f, 90.11f },  // Gyorg    bottom
+    { 37.03f, 63.02f },  // Twinmold left
+};
+
+// OOT's six medallions on the hexagon plate, in sMedallionArt order: Forest, Fire, Water,
+// Spirit, Shadow, Light - which puts Light at the top and runs clockwise from the upper right,
+// the same way round OOT's own quest page reads.
+static const f32 sMedallionSocket[6][2] = {
+    { 196.0f, 128.0f }, // Forest upper-right
+    { 196.0f, 180.0f }, // Fire   lower-right
+    { 151.0f, 209.0f }, // Water  bottom
+    { 106.0f, 180.0f }, // Spirit lower-left
+    { 106.0f, 128.0f }, // Shadow upper-left
+    { 151.0f, 99.0f },  // Light  top
+};
+
+// OOT's three spiritual stones on the triangle plate, clockwise from the top: Kokiri Emerald,
+// Goron Ruby, Zora Sapphire. These used to live in quest slots 00-02; the plate is now the only
+// place they are drawn.
+static const f32 sStoneSocket[3][2] = {
+    { 63.93f, 127.11f }, // Kokiri Emerald top
+    { 62.02f, 179.19f }, // Goron Ruby     bottom
+    { 27.90f, 154.19f }, // Zora Sapphire  left
+};
 
 static u8 sCellUnownedColor[3] = { 52, 48, 44 };
 // The lifted OOT hexagon tiles are IA8, i.e. monochrome - this is the tint they take.
+static u8 sHexTint[3] = { 196, 178, 140 };
 
 // ---------------------------------------------------------------------------------------
 // State. The arm-internal cursor index deliberately lives here and not in PauseContext, so
@@ -628,11 +697,6 @@ static Gfx* So2h_DrawCollectible(Gfx* gfx, TexturePtr tex, s16 texDim, const So2
 }
 
 /**
- * The two concentric rings inside the hexagon window: OOT's six medallions on the hexagon's
- * vertices, MM's four boss remains on an inner ring sharing the same center.
- */
-
-/**
  * Centred square inside a cell, `frac` of the cell's shorter axis. Icons are square art and
  * cells are not, so nothing may just fill its cell or every icon stretches.
  */
@@ -693,7 +757,7 @@ s32 So2h_QuestBar_UpdateCursor(PlayState* play) {
                 return true;
             }
             if ((pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_RIGHT) && (pauseCtx->stickAdjX > 30)) {
-                So2h_QuestBar_Enter(play, PAUSE_CURSOR_QUEST_BAR_RIGHT, SO2H_CELL_MEDALLION_FIRST);
+                So2h_QuestBar_Enter(play, PAUSE_CURSOR_QUEST_BAR_RIGHT, 0);
                 return true;
             }
         }
@@ -776,10 +840,17 @@ static u8 So2h_ContentAlpha(So2hUiId node) {
 }
 
 /**
- * The six merged quest slots.
- *   row 0: Kokiri Emerald, Goron Ruby, Zora Sapphire
- *   row 1: Stone of Agony, Gerudo Card, Gold Skulltula token count
- * The medallions are not here - they belong to the hexagon block, which is its own consumer.
+ * The merged quest slots.
+ *   slot 0: Stone of Agony
+ *   slot 1: Gerudo Card
+ *   slot 2: Gold Skulltula token count
+ *   slot 3-5: empty for now
+ *
+ * The three spiritual stones used to live in slots 0-2. They moved to the quest display plate
+ * (So2h_Content_Remains), which has moulded sockets for them, so drawing them here as well
+ * would show the same three icons twice on one page. The medallions and boss remains were
+ * never here for the same reason. Slots 3-5 are deliberately left as bare cells rather than
+ * repacked - collapsing the grid to three cells is a scene change, and the scene is generated.
  */
 static Gfx* So2h_Content_QuestSlot(Gfx* gfx, So2hUiId node, const So2hUiRect* rect, void* user) {
     s32 slot = (s32)node - (s32)SO2H_PAUSE_QUEST_SLOT00;
@@ -794,17 +865,16 @@ static Gfx* So2h_Content_QuestSlot(Gfx* gfx, So2hUiId node, const So2hUiRect* re
 
     So2h_IconInRect(rect, CONTENT_SLOT_ICON_FRAC, &icon);
 
-    if (slot < 3) {
-        return So2h_DrawCollectible(gfx, (TexturePtr)OotQuestArt_GetPath(sStoneArt[slot]), OOT_QUEST_ART_ICON_DIM,
-                                    &icon, So2h_OotQuestBit((u8)(OOT_QUEST_KOKIRI_EMERALD + slot)), alpha);
-    }
-    if (slot == 3) {
+    if (slot == 0) {
         return So2h_DrawCollectible(gfx, (TexturePtr)OotQuestArt_GetPath(OOT_QUEST_ART_STONE_OF_AGONY),
                                     OOT_QUEST_ART_ICON_DIM, &icon, So2h_OotQuestBit(OOT_QUEST_STONE_OF_AGONY), alpha);
     }
-    if (slot == 4) {
+    if (slot == 1) {
         return So2h_DrawCollectible(gfx, (TexturePtr)OotQuestArt_GetPath(OOT_QUEST_ART_GERUDO_CARD),
                                     OOT_QUEST_ART_ICON_DIM, &icon, So2h_OotQuestBit(OOT_QUEST_GERUDO_CARD), alpha);
+    }
+    if (slot != 2) {
+        return gfx;
     }
 
     // Gold Skulltula tokens: MM's own 24x24 skulltula icon plus MM's HUD counter digits, so
@@ -1004,12 +1074,122 @@ static Gfx* So2h_Content_SongStaff(Gfx* gfx, So2hUiId node, const So2hUiRect* re
 }
 
 /**
+ * One socket on the quest display plate. Unlike So2h_DrawCollectible this draws NOTHING when
+ * the art is missing: the plate already has a moulded empty socket there, so a fallback recess
+ * would just stamp a square hole over it. Unowned still draws the dimmed icon, so the slot
+ * reads as a place a thing goes rather than as a socket that does not exist.
+ */
+static Gfx* So2h_DrawSocket(Gfx* gfx, TexturePtr tex, s16 texDim, const So2hUiRect* rect, s32 owned, u8 alpha) {
+    if (tex == NULL) {
+        return gfx;
+    }
+    return So2h_DrawCollectible(gfx, tex, texDim, rect, owned, alpha);
+}
+
+/**
+ * Places one icon centred on a socket, in the art's own pixel space scaled into the plate.
+ */
+static void So2h_SocketRect(const So2hUiRect* plate, f32 scale, const f32 socket[2], So2hUiRect* out) {
+    f32 cx = plate->x0 + (socket[0] * scale);
+    f32 cy = plate->y0 + (socket[1] * scale);
+    f32 halfW = QUEST_DISPLAY_SOCKET_W * scale * 0.5f;
+    f32 halfH = QUEST_DISPLAY_SOCKET_H * scale * 0.5f;
+
+    out->x0 = cx - halfW;
+    out->y0 = cy - halfH;
+    out->x1 = cx + halfW;
+    out->y1 = cy + halfH;
+}
+
+/**
+ * The quest display: the authored 223x256 plate over the solved SO2H_PAUSE_REMAINS_WIN rect,
+ * then MM's four boss remains, OOT's six medallions and OOT's three spiritual stones dropped
+ * into their moulded sockets.
+ *
+ * It is one content callback and not thirteen nodes on purpose - the socket positions are
+ * fixed by the art, so there is nothing for the layout solver to decide, and doing it this way
+ * needs no scene regeneration. Per-socket cursor nodes are a separate item if they are ever
+ * wanted.
+ */
+static Gfx* So2h_Content_Remains(Gfx* gfx, So2hUiId node, const So2hUiRect* rect, void* user) {
+    u8 alpha = So2h_ContentAlpha(node);
+    So2hUiRect plate;
+    So2hUiRect icon;
+    f32 availW;
+    f32 availH;
+    f32 scale;
+    f32 plateW;
+    f32 plateH;
+    s32 i;
+
+    (void)user;
+
+    if (alpha == 0) {
+        return gfx;
+    }
+
+    // Fit the plate inside the window on its tighter axis, uniformly, so the isometric
+    // geometry never shears and it can never spill the frame at either aspect ratio.
+    availW = rect->x1 - rect->x0;
+    availH = rect->y1 - rect->y0;
+    if ((availW < 8.0f) || (availH < 8.0f)) {
+        return gfx;
+    }
+
+    scale = availW / (f32)QUEST_DISPLAY_TEX_W;
+    if ((availH / (f32)QUEST_DISPLAY_TEX_H) < scale) {
+        scale = availH / (f32)QUEST_DISPLAY_TEX_H;
+    }
+
+    plateW = (f32)QUEST_DISPLAY_TEX_W * scale;
+    plateH = (f32)QUEST_DISPLAY_TEX_H * scale;
+
+    plate.x0 = rect->x0 + ((availW - plateW) * QUEST_DISPLAY_ALIGN_X);
+    plate.y0 = ((rect->y0 + rect->y1) * 0.5f) - (plateH * 0.5f);
+    plate.x1 = plate.x0 + plateW;
+    plate.y1 = plate.y0 + plateH;
+
+    // The plate itself. Authored RGBA32, so it carries its own colour and its own alpha.
+    gfx = So2h_SetupSkinMode(gfx, alpha);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hQuestDisplayTex, QUEST_DISPLAY_TEX_W, QUEST_DISPLAY_TEX_H, &plate);
+    gfx = So2h_RestoreBlendState(gfx);
+
+    // MM's four boss remains. MM art, so no OOT merge is needed for these.
+    for (i = 0; i < 4; i++) {
+        So2h_SocketRect(&plate, scale, sRemainsSocket[i], &icon);
+        gfx = So2h_DrawSocket(gfx, (TexturePtr)gItemIcons[ITEM_REMAINS_ODOLWA + i], ITEM_ICON_TEX, &icon,
+                              CHECK_QUEST_ITEM(QUEST_REMAINS_ODOLWA + i) != 0, alpha);
+    }
+
+    // OOT's six medallions.
+    for (i = 0; i < 6; i++) {
+        So2h_SocketRect(&plate, scale, sMedallionSocket[i], &icon);
+        gfx = So2h_DrawSocket(gfx, (TexturePtr)OotQuestArt_GetPath(sMedallionArt[i]), OOT_QUEST_ART_ICON_DIM, &icon,
+                              So2h_OotQuestBit((u8)(OOT_QUEST_MEDALLION_FOREST + i)), alpha);
+    }
+
+    // OOT's three spiritual stones.
+    for (i = 0; i < 3; i++) {
+        So2h_SocketRect(&plate, scale, sStoneSocket[i], &icon);
+        gfx = So2h_DrawSocket(gfx, (TexturePtr)OotQuestArt_GetPath(sStoneArt[i]), OOT_QUEST_ART_ICON_DIM, &icon,
+                              So2h_OotQuestBit((u8)(OOT_QUEST_KOKIRI_EMERALD + i)), alpha);
+    }
+
+    return gfx;
+}
+
+/**
  * The whole content manifest. This table IS the acceptance test: a new readout is one row
  * here and one callback above, and nothing in the layout, clipping, navigation or asset code
  * moves. Called once per So2h_Ui_Init - bindings survive So2h_Ui_Reset by design.
  */
 void So2h_QuestBar_Bind(void) {
     s32 i;
+
+    // One-shot: prints which OOT quest textures actually resolved out of the merged archive.
+    // A slot with no art is indistinguishable on screen from a slot the player hasn't filled,
+    // so this is the only way to tell a layout bug from a missing asset.
+    OotQuestArt_LogAudit();
 
     for (i = 0; i < CONTENT_QUEST_SLOT_COUNT; i++) {
         So2h_Ui_BindDraw((So2hUiId)(SO2H_PAUSE_QUEST_SLOT00 + i), So2h_Content_QuestSlot, NULL);
@@ -1018,6 +1198,7 @@ void So2h_QuestBar_Bind(void) {
         So2h_Ui_BindDraw((So2hUiId)(SO2H_PAUSE_SONG00 + i), So2h_Content_SongCell, NULL);
     }
 
+    So2h_Ui_BindDraw(SO2H_PAUSE_REMAINS_WIN, So2h_Content_Remains, NULL);
     So2h_Ui_BindDraw(SO2H_PAUSE_HEART_WIN, So2h_Content_Heart, NULL);
     So2h_Ui_BindDraw(SO2H_PAUSE_NOTEBOOK, So2h_Content_Notebook, NULL);
     So2h_Ui_BindDraw(SO2H_PAUSE_SONG_STAFF, So2h_Content_SongStaff, NULL);

@@ -44,10 +44,15 @@ const char* OotItemIcons_GetEquipNamePath(unsigned char equipType, unsigned char
 //
 // Two families:
 //   * collectible icons - textures/icon_item_24_static, 24x24 RGBA32, drawn minified.
-//   * hexagon line-art  - textures/icon_item_static gPauseQuestStatusNNTex, 80x32 IA8. These
-//     are the 6 tiles (03/04/13/14/23/24) of OOT's quest-page background carrying the
-//     medallion hexagon and the Triforce center; tiled 2 wide x 3 tall they form one 160x96
-//     image. IA8 is monochrome+alpha, so the colour comes from the prim colour.
+//   * hexagon line-art  - textures/icon_item_static gPauseQuestStatus<A><B>Tex, 80x32 IA8.
+//     IMPORTANT: the two name digits are NOT row-major. soh's page-background vertex builder
+//     (z_kaleido_scope_PAL.c func_80823A0C :2802-2814) steps A over x and B over y, so
+//     **A = screen COLUMN (0..2), B = screen ROW (0..4)** and the full background is
+//     3 cols x 5 rows of 80x32 = 240x160. The medallion hexagon lives in columns 1-2,
+//     rows 0-3: tiles 10/20/11/21/12/22/13/23, an 8-tile 2-wide x 4-tall 160x128 block.
+//     (The old 03/04/13/14/23/24 set was the bottom two rows of all three columns - the
+//     treble clef / staff art - which is why the block rendered wrong.)
+//     IA8 is monochrome+alpha, so the colour comes from the prim colour.
 //
 // Same contract as the functions above: returns NULL when OOT content isn't merged into this
 // mm.o2r, or on an out-of-range id, so the bar always has an explicit fallback signal.
@@ -66,13 +71,18 @@ typedef enum OotQuestArtId {
     /* 11 */ OOT_QUEST_ART_GOLD_SKULLTULA,
     /* 12 */ OOT_QUEST_ART_HEART_CONTAINER,
     /* 13 */ OOT_QUEST_ART_HEART_PIECE,
-    /* 14 */ OOT_QUEST_ART_HEX_TILE_03, // top-left     of the 2x3 hexagon block
-    /* 15 */ OOT_QUEST_ART_HEX_TILE_04, // top-right
-    /* 16 */ OOT_QUEST_ART_HEX_TILE_13, // middle-left
-    /* 17 */ OOT_QUEST_ART_HEX_TILE_14, // middle-right
-    /* 18 */ OOT_QUEST_ART_HEX_TILE_23, // bottom-left
-    /* 19 */ OOT_QUEST_ART_HEX_TILE_24, // bottom-right
-    /* 20 */ OOT_QUEST_ART_MAX
+    // The 2x4 hexagon block, in draw order: pairs left-to-right, stacked top-to-bottom.
+    // Name digits are <column><row>, see the note above.
+    /* 14 */ OOT_QUEST_ART_HEX_TILE_10, // row 0 left
+    /* 15 */ OOT_QUEST_ART_HEX_TILE_20, // row 0 right
+    /* 16 */ OOT_QUEST_ART_HEX_TILE_11, // row 1 left
+    /* 17 */ OOT_QUEST_ART_HEX_TILE_21, // row 1 right
+    /* 18 */ OOT_QUEST_ART_HEX_TILE_12, // row 2 left
+    /* 19 */ OOT_QUEST_ART_HEX_TILE_22, // row 2 right
+    /* 20 */ OOT_QUEST_ART_HEX_TILE_13, // row 3 left
+    /* 21 */ OOT_QUEST_ART_HEX_TILE_23, // row 3 right
+    /* 22 */ OOT_QUEST_ART_HEX_TILE_10_ENG, // language fallback for tile 10 only
+    /* 23 */ OOT_QUEST_ART_MAX
 } OotQuestArtId;
 
 // Source dimensions of the two families, so callers don't hardcode them.
@@ -80,7 +90,18 @@ typedef enum OotQuestArtId {
 #define OOT_QUEST_ART_HEX_TILE_W 80
 #define OOT_QUEST_ART_HEX_TILE_H 32
 
+// Shape of the medallion-hexagon block assembled from the 8 tiles above.
+#define OOT_QUEST_ART_HEX_BLOCK_COLS 2
+#define OOT_QUEST_ART_HEX_BLOCK_ROWS 4
+#define OOT_QUEST_ART_HEX_BLOCK_W (OOT_QUEST_ART_HEX_TILE_W * OOT_QUEST_ART_HEX_BLOCK_COLS) // 160
+#define OOT_QUEST_ART_HEX_BLOCK_H (OOT_QUEST_ART_HEX_TILE_H * OOT_QUEST_ART_HEX_BLOCK_ROWS) // 128
+
 const char* OotQuestArt_GetPath(int artId);
+
+// One-shot diagnostic: logs every OotQuestArtId with its resolved archive path and whether the
+// entry actually exists in the merged o2r. Repeat calls are no-ops. Used to settle whether blank
+// quest slots are a layout bug or simply missing OOT art in the user's merged archive.
+void OotQuestArt_LogAudit(void);
 
 #ifdef __cplusplus
 }
