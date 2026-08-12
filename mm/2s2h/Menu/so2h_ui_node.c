@@ -224,6 +224,19 @@ const So2hUiNode* So2h_Ui_GetNode(So2hUiId id) {
     return &sCtx.node[id];
 }
 
+/**
+ * The descriptor a node was built from. Exposed so a content callback can re-emit its own
+ * node's art - the quest plate lifts remainsWin's chrome back over itself so the plate reads
+ * as tucked in behind the frame - without hard-coding the sheet, mode or scale that the
+ * generated scene already states. Read-only: the table is const.
+ */
+const So2hUiDesc* So2h_Ui_GetDesc(So2hUiId id) {
+    if (!So2h_UiNode_IsValid(id) || (sCtx.desc == NULL)) {
+        return NULL;
+    }
+    return &sCtx.desc[id];
+}
+
 const So2hUiRect* So2h_Ui_GetRect(So2hUiId id) {
     if (!So2h_UiNode_IsValid(id)) {
         return NULL;

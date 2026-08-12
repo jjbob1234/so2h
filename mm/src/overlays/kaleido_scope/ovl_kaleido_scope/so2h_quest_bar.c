@@ -287,6 +287,19 @@ static u8 sStoneArt[3] = {
  */
 #define QUEST_DISPLAY_ALIGN_X 0.85f
 
+/*
+ * Vertical peek. The plate is height-limited by the window, so it exactly fills it and has no
+ * vertical slack to seat into - this pushes it DOWN past the window's lower edge instead, and
+ * the window's own chrome is then lifted back over the top of it (see the RING re-stamp at the
+ * end of So2h_Content_Remains) so the plate reads as sitting behind the frame and peeking out
+ * from under its bottom lip. Anything past the lower edge is cropped rather than drawn, so it
+ * can never touch the outer quest-window chrome below.
+ *
+ * Not moved further right: at ALIGN_X 0.85 the plate's right edge already sits ~1 unit off the
+ * 16:9 screen edge, so there is no room for the 3 units of rightward nudge to go.
+ */
+#define QUEST_DISPLAY_PEEK_Y 3.0f
+
 #define QUEST_DISPLAY_SOCKET_W 24.0f
 #define QUEST_DISPLAY_SOCKET_H 22.0f
 
@@ -487,6 +500,52 @@ static Gfx* So2h_DrawSkinRect(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, 
 static Gfx* So2h_DrawSkinRectR(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, const So2hUiRect* r) {
     return So2h_DrawSkinRect(gfx, texture, texW, texH, So2h_Rnd(r->x0), So2h_Rnd(r->y0), So2h_Rnd(r->x1),
                              So2h_Rnd(r->y1));
+}
+
+/**
+ * So2h_DrawSkinRectR with the destination cropped to `clip` on the bottom and right, WITHOUT
+ * rescaling the art. The texel-per-unit ratio is taken from the full rect and only the
+ * destination edges move, so the visible part is the top-left of the texture at its intended
+ * size and the rest is simply not drawn - which is what lets the plate hang past the window's
+ * lower lip and be cut there instead of being squashed to fit or spilling onto the chrome
+ * below. Cropping only the far edges is deliberate: s and t start at 0, so moving x0 or y0
+ * would slide the art instead of cropping it.
+ */
+static Gfx* So2h_DrawSkinRectCropped(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, const So2hUiRect* r,
+                                     const So2hUiRect* clip) {
+    s16 x0 = So2h_Rnd(r->x0);
+    s16 y0 = So2h_Rnd(r->y0);
+    s16 x1 = So2h_Rnd(r->x1);
+    s16 y1 = So2h_Rnd(r->y1);
+    s16 cx1 = So2h_Rnd(clip->x1);
+    s16 cy1 = So2h_Rnd(clip->y1);
+    s16 fullW = x1 - x0;
+    s16 fullH = y1 - y0;
+    u16 dsdx;
+    u16 dtdy;
+
+    if ((fullW <= 0) || (fullH <= 0) || !So2h_GfxRoom(gfx, 16)) {
+        return gfx;
+    }
+    if (x1 > cx1) {
+        x1 = cx1;
+    }
+    if (y1 > cy1) {
+        y1 = cy1;
+    }
+    if ((x1 <= x0) || (y1 <= y0)) {
+        return gfx;
+    }
+
+    // From the FULL rect, not the cropped one - this is the whole point of the helper.
+    dsdx = (u16)(((u32)texW << 10) / (u32)fullW);
+    dtdy = (u16)(((u32)texH << 10) / (u32)fullH);
+
+    gDPLoadTextureBlock(gfx++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, texW, texH, 0, G_TX_NOMIRROR | G_TX_CLAMP,
+                        G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+    gSPWideTextureRectangle(gfx++, x0 << 2, y0 << 2, x1 << 2, y1 << 2, G_TX_RENDERTILE, 0, 0, dsdx, dtdy);
+
+    return gfx;
 }
 
 /**
@@ -1145,13 +1204,16 @@ static Gfx* So2h_Content_Remains(Gfx* gfx, So2hUiId node, const So2hUiRect* rect
     plateH = (f32)QUEST_DISPLAY_TEX_H * scale;
 
     plate.x0 = rect->x0 + ((availW - plateW) * QUEST_DISPLAY_ALIGN_X);
-    plate.y0 = ((rect->y0 + rect->y1) * 0.5f) - (plateH * 0.5f);
+    plate.y0 = (((rect->y0 + rect->y1) * 0.5f) - (plateH * 0.5f)) + QUEST_DISPLAY_PEEK_Y;
     plate.x1 = plate.x0 + plateW;
     plate.y1 = plate.y0 + plateH;
 
     // The plate itself. Authored RGBA32, so it carries its own colour and its own alpha.
+    // Cropped to the window rather than fitted to it: the bottom QUEST_DISPLAY_PEEK_Y units
+    // hang past the lower lip and are cut there, so the plate never reaches the outer chrome.
     gfx = So2h_SetupSkinMode(gfx, alpha);
-    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hQuestDisplayTex, QUEST_DISPLAY_TEX_W, QUEST_DISPLAY_TEX_H, &plate);
+    gfx = So2h_DrawSkinRectCropped(gfx, (TexturePtr)gSo2hQuestDisplayTex, QUEST_DISPLAY_TEX_W, QUEST_DISPLAY_TEX_H,
+                                   &plate, rect);
     gfx = So2h_RestoreBlendState(gfx);
 
     // MM's four boss remains. MM art, so no OOT merge is needed for these.
@@ -1173,6 +1235,21 @@ static Gfx* So2h_Content_Remains(Gfx* gfx, So2hUiId node, const So2hUiRect* rect
         So2h_SocketRect(&plate, scale, sStoneSocket[i], &icon);
         gfx = So2h_DrawSocket(gfx, (TexturePtr)OotQuestArt_GetPath(sStoneArt[i]), OOT_QUEST_ART_ICON_DIM, &icon,
                               So2h_OotQuestBit((u8)(OOT_QUEST_KOKIRI_EMERALD + i)), alpha);
+    }
+
+    // Lift this window's own chrome back over the plate. RING draws the frame's border cells
+    // and skips its fill, so the bevel and its shading land on top of the plate while the
+    // interior stays the plate - which is what makes the plate read as sitting BEHIND the
+    // frame and peeking out from under its lower lip, instead of pasted on top of it.
+    // The style is read from the node's own descriptor rather than restated here, so the
+    // sheet, draw scale and tint can only ever be whatever the generated scene says they are.
+    {
+        const So2hUiDesc* desc = So2h_Ui_GetDesc(node);
+
+        if ((desc != NULL) && (desc->style.sheet != SO2H_UI_INVALID)) {
+            gfx = So2h_UiDraw_Slice(gfx, desc->style.sheet, desc->style.slice, rect, rect, SO2H_UI_DRAW_RING, 255, 255,
+                                    255, alpha, desc->style.scale);
+        }
     }
 
     return gfx;

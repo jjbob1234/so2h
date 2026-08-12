@@ -646,6 +646,7 @@ Gfx* So2h_Ui_GetGfxBudget(void);
 // Queries
 // ---------------------------------------------------------------------------------------
 const So2hUiNode* So2h_Ui_GetNode(So2hUiId id);
+const So2hUiDesc* So2h_Ui_GetDesc(So2hUiId id);
 const So2hUiRect* So2h_Ui_GetRect(So2hUiId id);
 
 /** Cell rect inside a GRID / SCROLL_ROW parent. Out-of-range indices give an empty rect. */
