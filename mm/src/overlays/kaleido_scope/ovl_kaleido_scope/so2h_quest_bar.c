@@ -288,17 +288,43 @@ static u8 sStoneArt[3] = {
 #define QUEST_DISPLAY_ALIGN_X 0.85f
 
 /*
- * Vertical peek. The plate is height-limited by the window, so it exactly fills it and has no
- * vertical slack to seat into - this pushes it DOWN past the window's lower edge instead, and
- * the window's own chrome is then lifted back over the top of it (see the RING re-stamp at the
- * end of So2h_Content_Remains) so the plate reads as sitting behind the frame and peeking out
- * from under its bottom lip. Anything past the lower edge is cropped rather than drawn, so it
- * can never touch the outer quest-window chrome below.
- *
- * Not moved further right: at ALIGN_X 0.85 the plate's right edge already sits ~1 unit off the
- * 16:9 screen edge, so there is no room for the 3 units of rightward nudge to go.
+ * Vertical peek, in layout units, positive = down. The plate is height-limited by the window,
+ * so it exactly fills it and has no vertical slack; this pushes it past the lower edge when it
+ * is non-zero. Jay's call is 0 - the plate stays vertically centred in the window.
  */
-#define QUEST_DISPLAY_PEEK_Y 3.0f
+#define QUEST_DISPLAY_PEEK_Y 0.0f
+
+/*
+ * Horizontal nudge, in layout units, negative = left, applied after ALIGN_X. Jay's call is
+ * 8 units left of the 0.85 seat, which pulls the plate's right edge back inside the window
+ * (at 16:9 the window itself overhangs the screen's right edge by ~4.5 units, so the 0.85
+ * seat alone put the plate's right side under the screen border).
+ */
+#define QUEST_DISPLAY_NUDGE_X -8.0f
+
+/*
+ * The bottom-right border cover-up: Jay's authored 192x192 L-shaped corner piece, drawn ON TOP
+ * of the plate so the window's bottom and right border occlude it. This replaces re-stamping
+ * the window's own frame ring over the plate - one authored quad instead of the frame's border
+ * cells re-emitted, and the art can then say exactly how the overlap should look.
+ *
+ * Scale: one texel of the cover is one texel of the plate. That is not a guess - measuring
+ * Jay's example composite (255x277) puts both the plate and the cover in it at 1:1 with their
+ * source art, and at that scale the cover's 25 px bottom band lands on 8.29 units against the
+ * window's 8.55 unit frame cell, i.e. the art is already drawn to match the frame it covers.
+ */
+#define QUEST_COVER_TEX 192
+
+/*
+ * Where the frame's ART stops inside its own cell, as a fraction of one cell. The bottom-right
+ * cell of gSo2hSheetFrameEmpty (cell 4,4 of a 5x5 sheet on a 64 px unit) only paints x 0..37
+ * and y 0..33, so the frame's visible bottom-right pixel sits 26 px left and 30 px up of the
+ * node rect's own corner. Anchoring the cover to the raw rect corner therefore hangs it past
+ * the frame on both axes; these back it up so its bottom-right texel lands 1:1 on the frame's
+ * bottom-right texel.
+ */
+#define QUEST_FRAME_INSET_X_FRAC (26.0f / 64.0f)
+#define QUEST_FRAME_INSET_Y_FRAC (30.0f / 64.0f)
 
 #define QUEST_DISPLAY_SOCKET_W 24.0f
 #define QUEST_DISPLAY_SOCKET_H 22.0f
@@ -500,52 +526,6 @@ static Gfx* So2h_DrawSkinRect(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, 
 static Gfx* So2h_DrawSkinRectR(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, const So2hUiRect* r) {
     return So2h_DrawSkinRect(gfx, texture, texW, texH, So2h_Rnd(r->x0), So2h_Rnd(r->y0), So2h_Rnd(r->x1),
                              So2h_Rnd(r->y1));
-}
-
-/**
- * So2h_DrawSkinRectR with the destination cropped to `clip` on the bottom and right, WITHOUT
- * rescaling the art. The texel-per-unit ratio is taken from the full rect and only the
- * destination edges move, so the visible part is the top-left of the texture at its intended
- * size and the rest is simply not drawn - which is what lets the plate hang past the window's
- * lower lip and be cut there instead of being squashed to fit or spilling onto the chrome
- * below. Cropping only the far edges is deliberate: s and t start at 0, so moving x0 or y0
- * would slide the art instead of cropping it.
- */
-static Gfx* So2h_DrawSkinRectCropped(Gfx* gfx, TexturePtr texture, s16 texW, s16 texH, const So2hUiRect* r,
-                                     const So2hUiRect* clip) {
-    s16 x0 = So2h_Rnd(r->x0);
-    s16 y0 = So2h_Rnd(r->y0);
-    s16 x1 = So2h_Rnd(r->x1);
-    s16 y1 = So2h_Rnd(r->y1);
-    s16 cx1 = So2h_Rnd(clip->x1);
-    s16 cy1 = So2h_Rnd(clip->y1);
-    s16 fullW = x1 - x0;
-    s16 fullH = y1 - y0;
-    u16 dsdx;
-    u16 dtdy;
-
-    if ((fullW <= 0) || (fullH <= 0) || !So2h_GfxRoom(gfx, 16)) {
-        return gfx;
-    }
-    if (x1 > cx1) {
-        x1 = cx1;
-    }
-    if (y1 > cy1) {
-        y1 = cy1;
-    }
-    if ((x1 <= x0) || (y1 <= y0)) {
-        return gfx;
-    }
-
-    // From the FULL rect, not the cropped one - this is the whole point of the helper.
-    dsdx = (u16)(((u32)texW << 10) / (u32)fullW);
-    dtdy = (u16)(((u32)texH << 10) / (u32)fullH);
-
-    gDPLoadTextureBlock(gfx++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, texW, texH, 0, G_TX_NOMIRROR | G_TX_CLAMP,
-                        G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
-    gSPWideTextureRectangle(gfx++, x0 << 2, y0 << 2, x1 << 2, y1 << 2, G_TX_RENDERTILE, 0, 0, dsdx, dtdy);
-
-    return gfx;
 }
 
 /**
@@ -1203,17 +1183,17 @@ static Gfx* So2h_Content_Remains(Gfx* gfx, So2hUiId node, const So2hUiRect* rect
     plateW = (f32)QUEST_DISPLAY_TEX_W * scale;
     plateH = (f32)QUEST_DISPLAY_TEX_H * scale;
 
-    plate.x0 = rect->x0 + ((availW - plateW) * QUEST_DISPLAY_ALIGN_X);
+    plate.x0 = rect->x0 + ((availW - plateW) * QUEST_DISPLAY_ALIGN_X) + QUEST_DISPLAY_NUDGE_X;
     plate.y0 = (((rect->y0 + rect->y1) * 0.5f) - (plateH * 0.5f)) + QUEST_DISPLAY_PEEK_Y;
     plate.x1 = plate.x0 + plateW;
     plate.y1 = plate.y0 + plateH;
 
     // The plate itself. Authored RGBA32, so it carries its own colour and its own alpha.
-    // Cropped to the window rather than fitted to it: the bottom QUEST_DISPLAY_PEEK_Y units
-    // hang past the lower lip and are cut there, so the plate never reaches the outer chrome.
+    // Drawn whole, not cropped to the window: the cover-up quad at the end of this function
+    // does all of the hiding, so the plate is free to spill and be occluded by art rather
+    // than being cut by a rect nobody can see.
     gfx = So2h_SetupSkinMode(gfx, alpha);
-    gfx = So2h_DrawSkinRectCropped(gfx, (TexturePtr)gSo2hQuestDisplayTex, QUEST_DISPLAY_TEX_W, QUEST_DISPLAY_TEX_H,
-                                   &plate, rect);
+    gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hQuestDisplayTex, QUEST_DISPLAY_TEX_W, QUEST_DISPLAY_TEX_H, &plate);
     gfx = So2h_RestoreBlendState(gfx);
 
     // MM's four boss remains. MM art, so no OOT merge is needed for these.
@@ -1237,18 +1217,31 @@ static Gfx* So2h_Content_Remains(Gfx* gfx, So2hUiId node, const So2hUiRect* rect
                               So2h_OotQuestBit((u8)(OOT_QUEST_KOKIRI_EMERALD + i)), alpha);
     }
 
-    // Lift this window's own chrome back over the plate. RING draws the frame's border cells
-    // and skips its fill, so the bevel and its shading land on top of the plate while the
-    // interior stays the plate - which is what makes the plate read as sitting BEHIND the
-    // frame and peeking out from under its lower lip, instead of pasted on top of it.
-    // The style is read from the node's own descriptor rather than restated here, so the
-    // sheet, draw scale and tint can only ever be whatever the generated scene says they are.
+    // The bottom-right border cover-up, drawn last so it lands on top of the plate and its
+    // icons. Seated by measurement rather than by eye: the quad is the cover at plate scale,
+    // and its bottom-right corner is pulled back off the node rect by the amount the frame's
+    // own art stops short inside its last cell, so its border texels sit exactly on the
+    // frame's border texels. The cell size comes from the node's own style through
+    // So2h_Ui_CellSize, so re-scaling the window in the scene moves this with it.
     {
         const So2hUiDesc* desc = So2h_Ui_GetDesc(node);
 
         if ((desc != NULL) && (desc->style.sheet != SO2H_UI_INVALID)) {
-            gfx = So2h_UiDraw_Slice(gfx, desc->style.sheet, desc->style.slice, rect, rect, SO2H_UI_DRAW_RING, 255, 255,
-                                    255, alpha, desc->style.scale);
+            f32 cell = So2h_Ui_CellSize(desc->style.sheet, desc->style.scale);
+            f32 coverSide = (f32)QUEST_COVER_TEX * scale;
+            So2hUiRect cover;
+
+            if (cell > 0.0f) {
+                cover.x1 = rect->x1 - (cell * QUEST_FRAME_INSET_X_FRAC);
+                cover.y1 = rect->y1 - (cell * QUEST_FRAME_INSET_Y_FRAC);
+                cover.x0 = cover.x1 - coverSide;
+                cover.y0 = cover.y1 - coverSide;
+
+                gfx = So2h_SetupSkinMode(gfx, alpha);
+                gfx = So2h_DrawSkinRectR(gfx, (TexturePtr)gSo2hQuestCoverTex, QUEST_COVER_TEX, QUEST_COVER_TEX,
+                                         &cover);
+                gfx = So2h_RestoreBlendState(gfx);
+            }
         }
     }
 

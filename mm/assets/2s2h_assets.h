@@ -528,6 +528,9 @@ static const ALIGN_ASSET(2) char gSo2hLogoHDTex[] = dgSo2hLogoHD;
 #define dgSo2hQuestDisplay "__OTR__textures/so2h_menu/gSo2hQuestDisplay"
 static const ALIGN_ASSET(2) char gSo2hQuestDisplayTex[] = dgSo2hQuestDisplay;
 
+#define dgSo2hQuestCover "__OTR__textures/so2h_menu/gSo2hQuestCover"
+static const ALIGN_ASSET(2) char gSo2hQuestCoverTex[] = dgSo2hQuestCover;
+
 #define dgSo2hRoundTile "__OTR__textures/so2h_menu/gSo2hRoundTile"
 static const ALIGN_ASSET(2) char gSo2hRoundTileTex[] = dgSo2hRoundTile;
 

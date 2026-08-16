@@ -787,6 +787,13 @@ u16 So2h_Ui_Slice(u16 sheet, s16 col, s16 row);
 Gfx* So2h_UiDraw_Slice(Gfx* gfx, u16 sheet, u16 slice, const So2hUiRect* rect, const So2hUiRect* clip, u8 mode, u8 r,
                        u8 g, u8 b, u8 a, f32 scale);
 
+/**
+ * Screen size of one cell of `sheet` at `scale`, in layout units. This is the same number the
+ * frame drawers use, so a content callback can measure a frame's border in the frame's own
+ * terms instead of hardcoding one. Returns 0 for an unknown sheet.
+ */
+f32 So2h_Ui_CellSize(u16 sheet, f32 scale);
+
 // ---------------------------------------------------------------------------------------
 // Shared easing, exposed so content callbacks animate on the same curve as the chrome.
 // ---------------------------------------------------------------------------------------

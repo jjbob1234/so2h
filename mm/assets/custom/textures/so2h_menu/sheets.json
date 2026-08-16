@@ -425,7 +425,7 @@
     }
   ],
   "legacyTiles": {
-    "$comment": "NOT every PNG in this folder is listed here - ZAPD packs the whole custom-assets directory into 2ship.o2r, and this manifest only feeds the so2h_ui sheet table (SO2H_UI_MAX_SHEETS is 64 and every entry costs a slot). Art drawn directly by C from its mm/assets/2s2h_assets.h define - gSo2hQuestDisplay, gSo2hLogo, gSo2hLogoHD - is deliberately absent. The 43 pieces cut by tools/so2h_slice_menu_sheet.py. Each is its own 1x1 sheet at its own native size; unit is taken from the file. KEEP - additive, never replaced.",
+    "$comment": "NOT every PNG in this folder is listed here - ZAPD packs the whole custom-assets directory into 2ship.o2r, and this manifest only feeds the so2h_ui sheet table (SO2H_UI_MAX_SHEETS is 64 and every entry costs a slot). Art drawn directly by C from its mm/assets/2s2h_assets.h define - gSo2hQuestDisplay, gSo2hQuestCover, gSo2hLogo, gSo2hLogoHD - is deliberately absent. The 43 pieces cut by tools/so2h_slice_menu_sheet.py. Each is its own 1x1 sheet at its own native size; unit is taken from the file. KEEP - additive, never replaced.",
     "unitFromFile": true,
     "names": [
       "gSo2hBtnA",

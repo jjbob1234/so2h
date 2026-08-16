@@ -407,6 +407,25 @@ static f32 So2h_UiCellScreen(const So2hUiSheetDef* sheet, f32 scale) {
     return ((f32)sheet->unit / 32.0f) * ctx->tile * scale;
 }
 
+/**
+ * Screen size of one cell of `sheetId` at `scale`, for callers outside this file.
+ *
+ * A content callback that wants to sit art against a frame's border needs to know how thick
+ * that border is, and the only honest answer is the cell size the frame itself was drawn at.
+ * Exposing this is what keeps such a callback from hardcoding a unit count that silently
+ * lies the moment the node's style.scale or the sheet's unit changes.
+ *
+ * Returns 0 for an unknown sheet.
+ */
+f32 So2h_Ui_CellSize(u16 sheetId, f32 scale) {
+    const So2hUiSheetDef* sheet = So2h_UiSheet_Def(sheetId);
+
+    if (sheet == NULL) {
+        return 0.0f;
+    }
+    return So2h_UiCellScreen(sheet, scale);
+}
+
 // ---------------------------------------------------------------------------------------
 // Frame drawers
 //
